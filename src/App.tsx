@@ -67,7 +67,7 @@ const ReceiptModal = ({ tx, onClose, showNotification, title = "Transfer Success
       y += 30;
       pdf.setFontSize(8);
       pdf.setTextColor(156, 163, 175); // slate-400
-      pdf.text("Cultural Republic of Auralis Exchange Network", 20, y);
+      pdf.text("MicroChange Exchange Network", 20, y);
       pdf.text("This is an official record of your transaction.", 20, y + 5);
       
       const fileName = `receipt-${tx.id || Date.now()}.pdf`;
@@ -135,7 +135,7 @@ const ReceiptModal = ({ tx, onClose, showNotification, title = "Transfer Success
             </div>
 
             <div className="pt-6 text-center">
-              <p className="text-[9px] text-slate-400 uppercase tracking-tighter">Cultural Republic of Auralis Exchange Network</p>
+              <p className="text-[9px] text-slate-400 uppercase tracking-tighter">MicroChange Exchange Network</p>
             </div>
           </div>
 
@@ -704,8 +704,12 @@ export default function App() {
               transition={{ delay: 0.2 }}
               className="text-xl text-slate-600 max-w-2xl leading-relaxed"
             >
-              Exchange CAURA, FARISTEL, SOLARIS, and UNITED LAND KING tokens instantly. 
-              The official exchange network for the Cultural Republic of Auralis.
+              Exchange {(() => {
+                const names = (Object.keys(dynamicCurrencies) as CurrencyKey[]).map(k => dynamicCurrencies[k].name);
+                if (names.length <= 1) return names[0];
+                const last = names.pop();
+                return names.join(', ') + ' and ' + last;
+              })()} tokens instantly.
             </motion.p>
             <motion.div
               initial={{ opacity: 0, y: 20 }}
