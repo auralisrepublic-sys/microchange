@@ -57,6 +57,15 @@
         }
       },
       "description": "Alias to UID mapping for quick lookup"
+    },
+    "/settings/currencies": {
+      "schema": {
+        "type": "object",
+        "properties": {
+          "UNITED_LAND_KING_rate": { "type": "number" }
+        }
+      },
+      "description": "Dynamic currency rates"
     }
   }
 }

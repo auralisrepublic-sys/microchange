@@ -268,6 +268,57 @@ const TransactionItem = ({ tx, currentUid, onDownload }: { tx: TransactionRecord
   );
 };
 
+const AdminPanel = ({ currentRate, onUpdate }: { currentRate: number, onUpdate: (newRate: number) => Promise<void> }) => {
+  const [newRate, setNewRate] = useState(currentRate.toString());
+  const [loading, setLoading] = useState(false);
+
+  const handleUpdate = async () => {
+    if (isNaN(parseFloat(newRate))) return;
+    setLoading(true);
+    try {
+      await onUpdate(parseFloat(newRate));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="bg-white p-8 rounded-[2.5rem] border border-slate-200 shadow-xl space-y-6">
+      <div className="flex items-center gap-3 text-indigo-600">
+        <ShieldCheck size={32} />
+        <h3 className="font-black text-2xl">Admin Panel</h3>
+      </div>
+      <div className="p-4 bg-amber-50 border border-amber-100 rounded-2xl">
+        <p className="text-amber-800 text-sm font-medium">Authorized for: <span className="font-bold">salvimaino@gmail.com</span></p>
+        <p className="text-amber-700 text-xs mt-1">You have permission to modify the UnitedLand King exchange rate.</p>
+      </div>
+      <div className="space-y-3">
+        <label className="text-xs font-bold text-slate-400 uppercase tracking-widest">UnitedLand King Rate (Current: {currentRate})</label>
+        <div className="flex gap-3">
+          <div className="relative flex-1">
+            <Coins className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+            <input 
+              type="number" 
+              step="0.01"
+              value={newRate}
+              onChange={(e) => setNewRate(e.target.value)}
+              className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-slate-900 font-bold focus:ring-2 focus:ring-indigo-500 transition-all outline-none"
+            />
+          </div>
+          <button 
+            onClick={handleUpdate}
+            disabled={loading}
+            className="bg-indigo-600 text-white px-8 py-4 rounded-2xl font-bold hover:bg-indigo-700 transition-all disabled:opacity-50 shadow-lg shadow-indigo-100 flex items-center gap-2"
+          >
+            {loading ? <RefreshCw className="animate-spin" size={20} /> : <CheckCircle2 size={20} />}
+            {loading ? "Updating..." : "Update Rate"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // --- Main App ---
 
 export default function App() {
@@ -278,6 +329,7 @@ export default function App() {
   const [transactions, setTransactions] = useState<TransactionRecord[]>([]);
   const [showSetup, setShowSetup] = useState(false);
   const [preferredCurrency, setPreferredCurrency] = useState<CurrencyKey>('CAURA');
+  const [dynamicCurrencies, setDynamicCurrencies] = useState(CURRENCIES);
 
   // Transfer State
   const [transferTarget, setTransferTarget] = useState('');
@@ -300,6 +352,22 @@ export default function App() {
     setNotification({ message, type });
     setTimeout(() => setNotification(null), 4000);
   };
+
+  useEffect(() => {
+    const unsub = onSnapshot(doc(db, 'settings', 'currencies'), (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data();
+        setDynamicCurrencies(prev => ({
+          ...prev,
+          UNITED_LAND_KING: {
+            ...prev.UNITED_LAND_KING,
+            rate: data.UNITED_LAND_KING_rate ?? prev.UNITED_LAND_KING.rate
+          }
+        }));
+      }
+    });
+    return unsub;
+  }, []);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
@@ -369,16 +437,6 @@ export default function App() {
       if (snapshot.exists()) {
         const data = snapshot.data() as UserProfile;
         setProfile(data);
-        
-        // Migration: Add CHESSAR if missing for existing users
-        if (data.balances && data.balances.CHESSAR === undefined) {
-          setDoc(doc(db, 'users', profile.uid), {
-            balances: {
-              ...data.balances,
-              CHESSAR: 5 // Welcome gift for existing users
-            }
-          }, { merge: true }).catch(err => console.error("Migration error", err));
-        }
       }
     });
 
@@ -410,21 +468,13 @@ export default function App() {
     
     // Initialize all currencies to 0, then set the preferred one
     const initialBalances: Record<string, number> = {};
-    (Object.keys(CURRENCIES) as CurrencyKey[]).forEach(key => {
+    (Object.keys(dynamicCurrencies) as CurrencyKey[]).forEach(key => {
       initialBalances[key] = 0;
     });
 
-    const startingAmounts: Record<string, number> = {
-      CAURA: 100,
-      FARISTEL: 25,
-      SOLARIS: 10,
-      UNITED_LAND_KING: 50,
-      CHESSAR: 5
-    };
-
-    (Object.keys(CURRENCIES) as CurrencyKey[]).forEach(key => {
-      initialBalances[key] = startingAmounts[key] || 0;
-    });
+    // Give $25 USD worth of the preferred currency
+    const initialAmount = 25 / dynamicCurrencies[preferredCurrency].rate;
+    initialBalances[preferredCurrency] = initialAmount;
 
     const initialProfile: UserProfile = {
       uid: user.uid,
@@ -542,8 +592,8 @@ export default function App() {
         throw new Error("Insufficient balance");
       }
 
-      const fromRate = CURRENCIES[exchangeFrom].rate;
-      const toRate = CURRENCIES[exchangeTo].rate;
+      const fromRate = dynamicCurrencies[exchangeFrom].rate;
+      const toRate = dynamicCurrencies[exchangeTo].rate;
       const resultAmount = (amount * fromRate) / toRate;
 
       await runTransaction(db, async (transaction) => {
@@ -586,6 +636,17 @@ export default function App() {
       showNotification(error.message, "error");
     } finally {
       setExchangeLoading(false);
+    }
+  };
+
+  const updateUnitedLandRate = async (newRate: number) => {
+    try {
+      await setDoc(doc(db, 'settings', 'currencies'), {
+        UNITED_LAND_KING_rate: newRate
+      }, { merge: true });
+      showNotification("UnitedLand rate updated successfully!", "success");
+    } catch (error: any) {
+      showNotification("Failed to update rate: " + error.message, "error");
     }
   };
 
@@ -699,7 +760,7 @@ export default function App() {
           </div>
 
           <div className="grid grid-cols-1 gap-3">
-            {(Object.keys(CURRENCIES) as CurrencyKey[]).map((key) => (
+            {(Object.keys(dynamicCurrencies) as CurrencyKey[]).map((key) => (
               <button
                 key={key}
                 onClick={() => setPreferredCurrency(key)}
@@ -711,8 +772,8 @@ export default function App() {
                 )}
               >
                 <div>
-                  <p className="font-bold text-slate-900">{CURRENCIES[key].name}</p>
-                  <p className="text-xs text-slate-500">{CURRENCIES[key].nation}</p>
+                  <p className="font-bold text-slate-900">{dynamicCurrencies[key].name}</p>
+                  <p className="text-xs text-slate-500">{dynamicCurrencies[key].nation}</p>
                 </div>
                 {preferredCurrency === key && <div className="w-3 h-3 bg-indigo-600 rounded-full" />}
               </button>
@@ -830,11 +891,11 @@ export default function App() {
                   </div>
                   
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {(Object.keys(CURRENCIES) as CurrencyKey[]).map((key) => (
+                    {(Object.keys(dynamicCurrencies) as CurrencyKey[]).map((key) => (
                       <CurrencyCard 
                         key={key}
-                        name={CURRENCIES[key].name}
-                        nation={CURRENCIES[key].nation}
+                        name={dynamicCurrencies[key].name}
+                        nation={dynamicCurrencies[key].nation}
                         amount={profile?.balances[key] || 0}
                         active={profile?.preferredCurrency === key}
                       />
@@ -902,7 +963,7 @@ export default function App() {
                           onChange={(e) => setTransferCurrency(e.target.value as CurrencyKey)}
                           className="w-full px-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-2 focus:ring-indigo-600 outline-none font-bold text-slate-900"
                         >
-                          {(Object.keys(CURRENCIES) as CurrencyKey[]).map(k => (
+                          {(Object.keys(dynamicCurrencies) as CurrencyKey[]).map(k => (
                             <option key={k} value={k}>{k}</option>
                           ))}
                         </select>
@@ -959,7 +1020,7 @@ export default function App() {
                             onChange={(e) => setExchangeFrom(e.target.value as CurrencyKey)}
                             className="bg-transparent font-bold text-xl outline-none text-slate-900"
                           >
-                            {(Object.keys(CURRENCIES) as CurrencyKey[]).map(k => (
+                            {(Object.keys(dynamicCurrencies) as CurrencyKey[]).map(k => (
                               <option key={k} value={k}>{k}</option>
                             ))}
                           </select>
@@ -996,15 +1057,15 @@ export default function App() {
                             onChange={(e) => setExchangeTo(e.target.value as CurrencyKey)}
                             className="bg-transparent font-bold text-xl outline-none text-slate-900"
                           >
-                            {(Object.keys(CURRENCIES) as CurrencyKey[]).map(k => (
+                            {(Object.keys(dynamicCurrencies) as CurrencyKey[]).map(k => (
                               <option key={k} value={k}>{k}</option>
                             ))}
                           </select>
                           <p className="font-mono font-bold text-xl text-indigo-600">
-                            {exchangeAmount ? ((parseFloat(exchangeAmount) * CURRENCIES[exchangeFrom].rate) / CURRENCIES[exchangeTo].rate).toFixed(2) : '0.00'}
+                            {exchangeAmount ? ((parseFloat(exchangeAmount) * dynamicCurrencies[exchangeFrom].rate) / dynamicCurrencies[exchangeTo].rate).toFixed(2) : '0.00'}
                           </p>
                         </div>
-                        <p className="text-xs text-slate-400 mt-2">Rate: 1 {exchangeFrom} = {(CURRENCIES[exchangeFrom].rate / CURRENCIES[exchangeTo].rate).toFixed(4)} {exchangeTo}</p>
+                        <p className="text-xs text-slate-400 mt-2">Rate: 1 {exchangeFrom} = {(dynamicCurrencies[exchangeFrom].rate / dynamicCurrencies[exchangeTo].rate).toFixed(4)} {exchangeTo}</p>
                       </div>
                     </div>
 
@@ -1046,6 +1107,15 @@ export default function App() {
                 </motion.div>
               )}
             </AnimatePresence>
+
+            {user?.email === 'salvimaino@gmail.com' && (
+              <div className="mt-12">
+                <AdminPanel 
+                  currentRate={dynamicCurrencies.UNITED_LAND_KING.rate} 
+                  onUpdate={updateUnitedLandRate} 
+                />
+              </div>
+            )}
           </div>
         </div>
       </main>
