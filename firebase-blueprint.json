@@ -1,0 +1,62 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile and balances",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "alias": { "type": "string", "description": "MCROXXXXXXXXX format" },
+        "balances": {
+          "type": "object",
+          "properties": {
+            "CAURA": { "type": "number" },
+            "FARISTEL": { "type": "number" },
+            "SOLARIS": { "type": "number" },
+            "UNITED_LAND_KING": { "type": "number" }
+          }
+        },
+        "preferredCurrency": { "type": "string", "enum": ["CAURA", "FARISTEL", "SOLARIS", "UNITED_LAND_KING"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "alias", "balances"]
+    },
+    "Transaction": {
+      "title": "Transaction",
+      "description": "Token transfer or exchange",
+      "type": "object",
+      "properties": {
+        "fromUid": { "type": "string" },
+        "toUid": { "type": "string" },
+        "fromAlias": { "type": "string" },
+        "toAlias": { "type": "string" },
+        "amount": { "type": "number" },
+        "currency": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "type": { "type": "string", "enum": ["transfer", "exchange"] }
+      },
+      "required": ["amount", "currency", "timestamp", "type"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles"
+    },
+    "/transactions/{transactionId}": {
+      "schema": "Transaction",
+      "description": "Transaction history"
+    },
+    "/aliases/{alias}": {
+      "schema": {
+        "type": "object",
+        "properties": {
+          "uid": { "type": "string" }
+        }
+      },
+      "description": "Alias to UID mapping for quick lookup"
+    }
+  }
+}

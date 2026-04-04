@@ -1,0 +1,5 @@
+{
+  "name": "microchange",
+  "description": "A professional token exchange network for the Cultural Republic of Auralis and allied nations. Swap, transfer, and pay using CAURA, FARISTEL, SOLARIS, and UNITED LAND KING.",
+  "requestFramePermissions": ["camera"]
+}
