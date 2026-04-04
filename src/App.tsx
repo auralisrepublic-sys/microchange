@@ -289,7 +289,7 @@ const AdminPanel = ({ currentRate, onUpdate }: { currentRate: number, onUpdate: 
         <h3 className="font-black text-2xl">Admin Panel</h3>
       </div>
       <div className="p-4 bg-amber-50 border border-amber-100 rounded-2xl">
-        <p className="text-amber-800 text-sm font-medium">Authorized for: <span className="font-bold">salvimaino@gmail.com</span></p>
+        <p className="text-amber-800 text-sm font-medium">Authorized for: <span className="font-bold">mainosalvi@gmail.com</span></p>
         <p className="text-amber-700 text-xs mt-1">You have permission to modify the UnitedLand King exchange rate.</p>
       </div>
       <div className="space-y-3">
@@ -325,7 +325,7 @@ export default function App() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'wallet' | 'transfer' | 'exchange' | 'history'>('wallet');
+  const [activeTab, setActiveTab] = useState<'wallet' | 'transfer' | 'exchange' | 'history' | 'admin'>('wallet');
   const [transactions, setTransactions] = useState<TransactionRecord[]>([]);
   const [showSetup, setShowSetup] = useState(false);
   const [preferredCurrency, setPreferredCurrency] = useState<CurrencyKey>('CAURA');
@@ -365,6 +365,8 @@ export default function App() {
           }
         }));
       }
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'settings/currencies');
     });
     return unsub;
   }, []);
@@ -382,16 +384,20 @@ export default function App() {
         }
 
         setUser(u);
-        const profileDoc = await getDoc(doc(db, 'users', u.uid));
-        if (profileDoc.exists()) {
-          // If profile exists, ensure this browser is linked to this UID
-          if (!storedUid) {
-            localStorage.setItem('mcro_assigned_uid', u.uid);
+        try {
+          const profileDoc = await getDoc(doc(db, 'users', u.uid));
+          if (profileDoc.exists()) {
+            // If profile exists, ensure this browser is linked to this UID
+            if (!storedUid) {
+              localStorage.setItem('mcro_assigned_uid', u.uid);
+            }
+            setProfile(profileDoc.data() as UserProfile);
+            setShowSetup(false);
+          } else {
+            setShowSetup(true);
           }
-          setProfile(profileDoc.data() as UserProfile);
-          setShowSetup(false);
-        } else {
-          setShowSetup(true);
+        } catch (error) {
+          handleFirestoreError(error, OperationType.GET, `users/${u.uid}`);
         }
       } else {
         setUser(null);
@@ -423,6 +429,8 @@ export default function App() {
         const combined = [...txs, ...prev.filter(p => p.fromUid !== profile.uid)];
         return combined.sort((a, b) => b.timestamp?.toMillis() - a.timestamp?.toMillis()).slice(0, 20);
       });
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'transactions');
     });
 
     const unsub2 = onSnapshot(q2, (snapshot) => {
@@ -431,6 +439,8 @@ export default function App() {
         const combined = [...txs, ...prev.filter(p => p.toUid !== profile.uid)];
         return combined.sort((a, b) => b.timestamp?.toMillis() - a.timestamp?.toMillis()).slice(0, 20);
       });
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'transactions');
     });
 
     const unsubProfile = onSnapshot(doc(db, 'users', profile.uid), (snapshot) => {
@@ -438,6 +448,8 @@ export default function App() {
         const data = snapshot.data() as UserProfile;
         setProfile(data);
       }
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, `users/${profile.uid}`);
     });
 
     return () => { unsub1(); unsub2(); unsubProfile(); };
@@ -575,6 +587,7 @@ export default function App() {
       setTransferTarget('');
     } catch (error: any) {
       setTransferError(error.message);
+      handleFirestoreError(error, OperationType.WRITE, 'transactions');
     } finally {
       setTransferLoading(false);
     }
@@ -634,6 +647,7 @@ export default function App() {
       setActiveTab('wallet');
     } catch (error: any) {
       showNotification(error.message, "error");
+      handleFirestoreError(error, OperationType.WRITE, 'transactions');
     } finally {
       setExchangeLoading(false);
     }
@@ -647,6 +661,7 @@ export default function App() {
       showNotification("UnitedLand rate updated successfully!", "success");
     } catch (error: any) {
       showNotification("Failed to update rate: " + error.message, "error");
+      handleFirestoreError(error, OperationType.WRITE, 'settings/currencies');
     }
   };
 
@@ -828,6 +843,7 @@ export default function App() {
                 { id: 'transfer', label: 'Transfer', icon: Send },
                 { id: 'exchange', label: 'Exchange', icon: ArrowLeftRight },
                 { id: 'history', label: 'History', icon: History },
+                ...(user?.email === 'mainosalvi@gmail.com' ? [{ id: 'admin', label: 'Admin', icon: ShieldCheck }] : []),
               ].map((item) => (
                 <button
                   key={item.id}
@@ -863,6 +879,21 @@ export default function App() {
                   </div>
                 </div>
                 <p className="text-[10px] text-center mt-4 text-slate-400 font-bold uppercase tracking-widest">Your Payment QR</p>
+                
+                {user?.email === 'mainosalvi@gmail.com' && (
+                  <button 
+                    onClick={() => setActiveTab('admin')}
+                    className={cn(
+                      "w-full mt-6 flex items-center justify-center gap-2 py-3 rounded-xl font-bold transition-all shadow-lg",
+                      activeTab === 'admin' 
+                        ? "bg-indigo-600 text-white shadow-indigo-100" 
+                        : "bg-amber-500 text-white shadow-amber-100 hover:bg-amber-600"
+                    )}
+                  >
+                    <ShieldCheck size={18} />
+                    Admin Panel
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -878,6 +909,23 @@ export default function App() {
                   exit={{ opacity: 0, x: -20 }}
                   className="space-y-8"
                 >
+                  {user?.email === 'mainosalvi@gmail.com' && (
+                    <div className="bg-amber-50 border border-amber-100 p-4 rounded-2xl flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <ShieldCheck className="text-amber-600" size={24} />
+                        <div>
+                          <p className="text-amber-900 font-bold text-sm">Admin Access</p>
+                          <p className="text-amber-700 text-xs">Manage currency rates</p>
+                        </div>
+                      </div>
+                      <button 
+                        onClick={() => setActiveTab('admin')}
+                        className="bg-amber-500 text-white px-4 py-2 rounded-xl text-xs font-bold hover:bg-amber-600 transition-all shadow-md shadow-amber-100"
+                      >
+                        Open Panel
+                      </button>
+                    </div>
+                  )}
                   <div className="flex items-center justify-between">
                     <h2 className="text-2xl font-extrabold text-slate-900">Your Assets</h2>
                     <div className="flex gap-2">
@@ -1106,16 +1154,21 @@ export default function App() {
                   </div>
                 </motion.div>
               )}
-            </AnimatePresence>
 
-            {user?.email === 'salvimaino@gmail.com' && (
-              <div className="mt-12">
-                <AdminPanel 
-                  currentRate={dynamicCurrencies.UNITED_LAND_KING.rate} 
-                  onUpdate={updateUnitedLandRate} 
-                />
-              </div>
-            )}
+              {activeTab === 'admin' && user?.email === 'mainosalvi@gmail.com' && (
+                <motion.div 
+                  key="admin"
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                >
+                  <AdminPanel 
+                    currentRate={dynamicCurrencies.UNITED_LAND_KING.rate} 
+                    onUpdate={updateUnitedLandRate} 
+                  />
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
         </div>
       </main>
@@ -1127,6 +1180,7 @@ export default function App() {
           { id: 'transfer', icon: Send },
           { id: 'exchange', icon: ArrowLeftRight },
           { id: 'history', icon: History },
+          ...(user?.email === 'mainosalvi@gmail.com' ? [{ id: 'admin', icon: ShieldCheck }] : []),
         ].map((item) => (
           <button
             key={item.id}
