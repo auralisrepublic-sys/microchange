@@ -69,7 +69,7 @@ service cloud.firestore {
              data.displayName is string && data.displayName.size() < 100 &&
              data.alias is string && data.alias.matches("^MCRO[A-Z0-9]{9}$") &&
              data.balances is map &&
-             data.preferredCurrency in ['CAURA', 'FARISTEL', 'SOLARIS', 'UNITED_LAND_KING', 'CHESSAR', 'NEW_GREENIAN_CROWN'] &&
+             data.preferredCurrency in ['CAURA', 'FARISTEL', 'SOLARIS', 'UNITED_LAND_KING', 'CHESSAR', 'NEW_GREENIAN_CROWN', 'OURS_IS_ECLAT'] &&
              data.createdAt is timestamp;
     }
 
