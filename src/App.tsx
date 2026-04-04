@@ -24,7 +24,7 @@ const ReceiptModal = ({ tx, onClose, title = "Transfer Successful!" }: { tx: any
       // Header
       pdf.setFontSize(24);
       pdf.setTextColor(79, 70, 229); // indigo-600
-      pdf.text("microchange", 20, 25);
+      pdf.text("MicroChange", 20, 25);
       
       pdf.setFontSize(10);
       pdf.setTextColor(156, 163, 175); // slate-400
@@ -104,7 +104,7 @@ const ReceiptModal = ({ tx, onClose, title = "Transfer Successful!" }: { tx: any
                 <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center">
                   <Globe className="text-white w-4 h-4" />
                 </div>
-                <span className="font-bold text-slate-900">microchange</span>
+                <span className="font-bold text-slate-900">MicroChange</span>
               </div>
               <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Official Receipt</span>
             </div>
@@ -155,7 +155,7 @@ const ReceiptModal = ({ tx, onClose, title = "Transfer Successful!" }: { tx: any
             <button 
               onClick={() => {
                 const dateStr = tx.timestamp instanceof Date ? tx.timestamp.toLocaleString() : tx.timestamp?.toDate().toLocaleString();
-                const text = `microchange Receipt\nDate: ${dateStr}\nFrom: ${tx.fromAlias}\nTo: ${tx.toAlias}\nAmount: ${tx.amount.toFixed(2)} ${tx.currency}\nType: ${tx.type}`;
+                const text = `MicroChange Receipt\nDate: ${dateStr}\nFrom: ${tx.fromAlias}\nTo: ${tx.toAlias}\nAmount: ${tx.amount.toFixed(2)} ${tx.currency}\nType: ${tx.type}`;
                 navigator.clipboard.writeText(text);
                 alert("Receipt info copied to clipboard!");
               }}
@@ -578,7 +578,7 @@ export default function App() {
               transition={{ delay: 0.1 }}
               className="text-5xl lg:text-7xl font-extrabold text-slate-900 leading-tight"
             >
-              Welcome to <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-violet-600">microchange</span>
+              Welcome to <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-600 to-violet-600">MicroChange</span>
             </motion.h1>
             <motion.p 
               initial={{ opacity: 0, y: 20 }}
@@ -652,7 +652,7 @@ export default function App() {
           className="max-w-md w-full bg-white p-8 rounded-3xl shadow-2xl border border-slate-100 space-y-8"
         >
           <div className="text-center space-y-2">
-            <h2 className="text-3xl font-extrabold text-slate-900">Welcome to microchange</h2>
+            <h2 className="text-3xl font-extrabold text-slate-900">Welcome to MicroChange</h2>
             <p className="text-slate-500">Select your initial currency to begin your journey.</p>
           </div>
 
