@@ -329,7 +329,7 @@ export default function App() {
   const [transactions, setTransactions] = useState<TransactionRecord[]>([]);
   const [showSetup, setShowSetup] = useState(false);
   const [preferredCurrency, setPreferredCurrency] = useState<CurrencyKey>('CAURA');
-  const [dynamicCurrencies, setDynamicCurrencies] = useState(CURRENCIES);
+  const [dynamicCurrencies, setDynamicCurrencies] = useState<Record<CurrencyKey, { name: string; rate: number; nation: string }>>(CURRENCIES);
 
   // Transfer State
   const [transferTarget, setTransferTarget] = useState('');
@@ -739,20 +739,23 @@ export default function App() {
                 <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Live Rates</span>
               </div>
               <div className="space-y-4">
-                {Object.values(CURRENCIES).map((c) => (
-                  <div key={c.name} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm">
-                        <TrendingUp size={20} className="text-indigo-600" />
+                {(Object.keys(dynamicCurrencies) as CurrencyKey[]).map((key) => {
+                  const c = dynamicCurrencies[key];
+                  return (
+                    <div key={c.name} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-sm">
+                          <TrendingUp size={20} className="text-indigo-600" />
+                        </div>
+                        <div>
+                          <p className="font-bold text-slate-900">{c.name}</p>
+                          <p className="text-[10px] text-slate-500 font-bold uppercase tracking-tighter">{c.nation}</p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="font-bold text-slate-900">{c.name}</p>
-                        <p className="text-[10px] text-slate-500 font-bold uppercase tracking-tighter">{c.nation}</p>
-                      </div>
+                      <p className="font-mono font-bold text-indigo-600">${c.rate.toFixed(2)}</p>
                     </div>
-                    <p className="font-mono font-bold text-indigo-600">${c.rate.toFixed(2)}</p>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           </motion.div>
