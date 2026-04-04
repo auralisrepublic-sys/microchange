@@ -11,7 +11,7 @@ import html2canvas from 'html2canvas';
 
 // --- Components ---
 
-const ReceiptModal = ({ tx, onClose, title = "Transfer Successful!" }: { tx: any; onClose: () => void; title?: string }) => {
+const ReceiptModal = ({ tx, onClose, showNotification, title = "Transfer Successful!" }: { tx: any; onClose: () => void; showNotification: (m: string, t?: any) => void; title?: string }) => {
   const receiptRef = useRef<HTMLDivElement>(null);
   const [isDownloading, setIsDownloading] = useState(false);
 
@@ -75,7 +75,7 @@ const ReceiptModal = ({ tx, onClose, title = "Transfer Successful!" }: { tx: any
       
     } catch (err) {
       console.error("PDF generation failed", err);
-      alert("Could not generate PDF. Please take a screenshot of this receipt.");
+      showNotification("Could not generate PDF. Please take a screenshot.", "error");
     } finally {
       setIsDownloading(false);
     }
@@ -86,7 +86,7 @@ const ReceiptModal = ({ tx, onClose, title = "Transfer Successful!" }: { tx: any
       <motion.div 
         initial={{ opacity: 0, scale: 0.9, y: 20 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
-        className="bg-white w-full max-w-md rounded-[2.5rem] overflow-hidden shadow-2xl flex flex-col"
+        className="bg-white w-full max-w-md rounded-[2.5rem] overflow-hidden shadow-2xl flex flex-col border border-white/10"
       >
         <div className="p-8 text-center space-y-4">
           <div className="w-20 h-20 bg-emerald-100 rounded-full flex items-center justify-center mx-auto text-emerald-600">
@@ -157,7 +157,7 @@ const ReceiptModal = ({ tx, onClose, title = "Transfer Successful!" }: { tx: any
                 const dateStr = tx.timestamp instanceof Date ? tx.timestamp.toLocaleString() : tx.timestamp?.toDate().toLocaleString();
                 const text = `MicroChange Receipt\nDate: ${dateStr}\nFrom: ${tx.fromAlias}\nTo: ${tx.toAlias}\nAmount: ${tx.amount.toFixed(2)} ${tx.currency}\nType: ${tx.type}`;
                 navigator.clipboard.writeText(text);
-                alert("Receipt info copied to clipboard!");
+                showNotification("Receipt info copied to clipboard!", "success");
               }}
               className="flex items-center justify-center gap-2 py-4 bg-slate-100 text-slate-600 rounded-2xl font-bold text-sm hover:bg-slate-200 transition-all"
             >
@@ -183,23 +183,25 @@ const Navbar = ({ user, onSignOut }: { user: UserProfile | null; onSignOut: () =
       <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-200">
         <Globe className="text-white w-6 h-6" />
       </div>
-      <span className="font-bold text-xl tracking-tight text-slate-900">micro<span className="text-indigo-600">change</span></span>
+      <span className="font-bold text-xl tracking-tight text-slate-900">Micro<span className="text-indigo-600">Change</span></span>
     </div>
-    {user && (
-      <div className="flex items-center gap-4">
-        <div className="hidden md:flex flex-col items-end mr-2">
-          <span className="text-sm font-semibold text-slate-900">{user.displayName}</span>
-          <span className="text-xs text-slate-500 font-mono">{user.alias}</span>
-        </div>
-        <button 
-          onClick={onSignOut}
-          className="p-2 text-slate-500 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-          title="Sign Out"
-        >
-          <LogOut size={20} />
-        </button>
-      </div>
-    )}
+    <div className="flex items-center gap-4">
+      {user && (
+        <>
+          <div className="hidden md:flex flex-col items-end mr-2">
+            <span className="text-sm font-semibold text-slate-900">{user.displayName}</span>
+            <span className="text-xs text-slate-500 font-mono">{user.alias}</span>
+          </div>
+          <button 
+            onClick={onSignOut}
+            className="p-2 text-slate-500 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+            title="Sign Out"
+          >
+            <LogOut size={20} />
+          </button>
+        </>
+      )}
+    </div>
   </nav>
 );
 
@@ -209,7 +211,9 @@ const CurrencyCard = ({ name, amount, nation, active, onClick }: { name: string;
     onClick={onClick}
     className={cn(
       "p-5 rounded-2xl border transition-all cursor-pointer",
-      active ? "bg-indigo-600 border-indigo-600 text-white shadow-xl shadow-indigo-200" : "bg-white border-slate-200 hover:border-indigo-200 text-slate-900 shadow-sm"
+      active 
+        ? "bg-indigo-600 border-indigo-600 text-white shadow-xl shadow-indigo-200" 
+        : "bg-white border-slate-200 hover:border-indigo-200 text-slate-900 shadow-sm"
     )}
   >
     <div className="flex justify-between items-start mb-4">
@@ -290,6 +294,12 @@ export default function App() {
 
   const [showScanner, setShowScanner] = useState(false);
   const [lastTransfer, setLastTransfer] = useState<any>(null);
+  const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
+
+  const showNotification = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
+    setNotification({ message, type });
+    setTimeout(() => setNotification(null), 4000);
+  };
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (u) => {
@@ -298,7 +308,7 @@ export default function App() {
         const storedUid = localStorage.getItem('mcro_assigned_uid');
         if (storedUid && storedUid !== u.uid) {
           await signOut(auth);
-          alert("This browser is already linked to another account. Only one account per device is allowed.");
+          showNotification("This device is linked to another account.", "error");
           setLoading(false);
           return;
         }
@@ -355,8 +365,21 @@ export default function App() {
       });
     });
 
-    const unsubProfile = onSnapshot(doc(db, 'users', profile.uid), (doc) => {
-      if (doc.exists()) setProfile(doc.data() as UserProfile);
+    const unsubProfile = onSnapshot(doc(db, 'users', profile.uid), (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data() as UserProfile;
+        setProfile(data);
+        
+        // Migration: Add CHESSAR if missing for existing users
+        if (data.balances && data.balances.CHESSAR === undefined) {
+          setDoc(doc(db, 'users', profile.uid), {
+            balances: {
+              ...data.balances,
+              CHESSAR: 5 // Welcome gift for existing users
+            }
+          }, { merge: true }).catch(err => console.error("Migration error", err));
+        }
+      }
     });
 
     return () => { unsub1(); unsub2(); unsubProfile(); };
@@ -384,17 +407,31 @@ export default function App() {
   const setupProfile = async () => {
     if (!user) return;
     const alias = generateAlias();
+    
+    // Initialize all currencies to 0, then set the preferred one
+    const initialBalances: Record<string, number> = {};
+    (Object.keys(CURRENCIES) as CurrencyKey[]).forEach(key => {
+      initialBalances[key] = 0;
+    });
+
+    const startingAmounts: Record<string, number> = {
+      CAURA: 100,
+      FARISTEL: 25,
+      SOLARIS: 10,
+      UNITED_LAND_KING: 50,
+      CHESSAR: 5
+    };
+
+    (Object.keys(CURRENCIES) as CurrencyKey[]).forEach(key => {
+      initialBalances[key] = startingAmounts[key] || 0;
+    });
+
     const initialProfile: UserProfile = {
       uid: user.uid,
       email: user.email || '',
       displayName: user.displayName || 'User',
       alias,
-      balances: {
-        CAURA: preferredCurrency === 'CAURA' ? 100 : 0,
-        FARISTEL: preferredCurrency === 'FARISTEL' ? 25 : 0,
-        SOLARIS: preferredCurrency === 'SOLARIS' ? 10 : 0,
-        UNITED_LAND_KING: preferredCurrency === 'UNITED_LAND_KING' ? 50 : 0,
-      },
+      balances: initialBalances as Record<CurrencyKey, number>,
       preferredCurrency,
       createdAt: Timestamp.now()
     };
@@ -500,7 +537,8 @@ export default function App() {
 
     try {
       const amount = parseFloat(exchangeAmount);
-      if (amount <= 0 || profile.balances[exchangeFrom] < amount) {
+      const currentFromBalance = profile.balances[exchangeFrom] || 0;
+      if (amount <= 0 || currentFromBalance < amount) {
         throw new Error("Insufficient balance");
       }
 
@@ -514,9 +552,12 @@ export default function App() {
         const userDoc = await transaction.get(userRef);
         const userData = userDoc.data() as UserProfile;
 
+        const fromBalance = userData.balances[exchangeFrom] || 0;
+        const toBalance = userData.balances[exchangeTo] || 0;
+
         transaction.update(userRef, {
-          [`balances.${exchangeFrom}`]: userData.balances[exchangeFrom] - amount,
-          [`balances.${exchangeTo}`]: userData.balances[exchangeTo] + resultAmount
+          [`balances.${exchangeFrom}`]: fromBalance - amount,
+          [`balances.${exchangeTo}`]: toBalance + resultAmount
         });
 
         transaction.set(txRef, {
@@ -542,7 +583,7 @@ export default function App() {
       });
       setActiveTab('wallet');
     } catch (error: any) {
-      alert(error.message);
+      showNotification(error.message, "error");
     } finally {
       setExchangeLoading(false);
     }
@@ -562,6 +603,7 @@ export default function App() {
   if (!user) {
     return (
       <div className="min-h-screen bg-slate-50 selection:bg-indigo-100 selection:text-indigo-900">
+        <Navbar user={null} onSignOut={() => {}} />
         <div className="max-w-6xl mx-auto px-6 py-20 flex flex-col lg:flex-row items-center gap-16">
           <div className="flex-1 space-y-8 text-center lg:text-left">
             <motion.div 
@@ -663,7 +705,9 @@ export default function App() {
                 onClick={() => setPreferredCurrency(key)}
                 className={cn(
                   "flex items-center justify-between p-4 rounded-2xl border-2 transition-all text-left",
-                  preferredCurrency === key ? "border-indigo-600 bg-indigo-50" : "border-slate-100 hover:border-indigo-200"
+                  preferredCurrency === key 
+                    ? "border-indigo-600 bg-indigo-50" 
+                    : "border-slate-100 hover:border-indigo-200"
                 )}
               >
                 <div>
@@ -687,9 +731,31 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 pb-24 md:pb-0 md:pt-20">
+    <div className="min-h-screen bg-slate-50 pb-24 md:pb-0 md:pt-20 transition-colors duration-300">
       <Navbar user={profile} onSignOut={handleSignOut} />
       
+      {/* Notification Overlay */}
+      <AnimatePresence>
+        {notification && (
+          <motion.div
+            initial={{ opacity: 0, y: -50 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -50 }}
+            className="fixed top-20 left-1/2 -translate-x-1/2 z-[200] w-full max-w-sm px-4"
+          >
+            <div className={cn(
+              "p-4 rounded-2xl shadow-2xl border flex items-center gap-3",
+              notification.type === 'success' ? "bg-emerald-50 border-emerald-100 text-emerald-800" :
+              notification.type === 'error' ? "bg-red-50 border-red-100 text-red-800" :
+              "bg-indigo-50 border-indigo-100 text-indigo-800"
+            )}>
+              {notification.type === 'success' ? <CheckCircle2 size={20} /> : notification.type === 'error' ? <X size={20} /> : <Globe size={20} />}
+              <p className="text-sm font-bold">{notification.message}</p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <main className="max-w-6xl mx-auto px-4 md:px-6 py-8">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
           
@@ -707,7 +773,9 @@ export default function App() {
                   onClick={() => setActiveTab(item.id as any)}
                   className={cn(
                     "w-full flex items-center gap-3 px-4 py-3 rounded-xl font-semibold transition-all",
-                    activeTab === item.id ? "bg-indigo-600 text-white shadow-lg shadow-indigo-100" : "text-slate-600 hover:bg-white hover:text-indigo-600"
+                    activeTab === item.id 
+                      ? "bg-indigo-600 text-white shadow-lg shadow-indigo-100" 
+                      : "text-slate-600 hover:bg-white hover:text-indigo-600"
                   )}
                 >
                   <item.icon size={20} />
@@ -820,7 +888,7 @@ export default function App() {
                           placeholder="MCROXXXXXXXXX"
                           value={transferTarget}
                           onChange={(e) => setTransferTarget(e.target.value.toUpperCase())}
-                          className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-2 focus:ring-indigo-600 outline-none font-mono font-bold"
+                          className="w-full pl-12 pr-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-2 focus:ring-indigo-600 outline-none font-mono font-bold text-slate-900 placeholder:text-slate-400"
                           required
                         />
                       </div>
@@ -832,7 +900,7 @@ export default function App() {
                         <select 
                           value={transferCurrency}
                           onChange={(e) => setTransferCurrency(e.target.value as CurrencyKey)}
-                          className="w-full px-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-2 focus:ring-indigo-600 outline-none font-bold"
+                          className="w-full px-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-2 focus:ring-indigo-600 outline-none font-bold text-slate-900"
                         >
                           {(Object.keys(CURRENCIES) as CurrencyKey[]).map(k => (
                             <option key={k} value={k}>{k}</option>
@@ -847,7 +915,7 @@ export default function App() {
                           placeholder="0.00"
                           value={transferAmount}
                           onChange={(e) => setTransferAmount(e.target.value)}
-                          className="w-full px-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-2 focus:ring-indigo-600 outline-none font-mono font-bold"
+                          className="w-full px-4 py-4 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-2 focus:ring-indigo-600 outline-none font-mono font-bold text-slate-900 placeholder:text-slate-400"
                           required
                         />
                       </div>
@@ -889,7 +957,7 @@ export default function App() {
                           <select 
                             value={exchangeFrom}
                             onChange={(e) => setExchangeFrom(e.target.value as CurrencyKey)}
-                            className="bg-transparent font-bold text-xl outline-none"
+                            className="bg-transparent font-bold text-xl outline-none text-slate-900"
                           >
                             {(Object.keys(CURRENCIES) as CurrencyKey[]).map(k => (
                               <option key={k} value={k}>{k}</option>
@@ -900,7 +968,7 @@ export default function App() {
                             placeholder="0.00"
                             value={exchangeAmount}
                             onChange={(e) => setExchangeAmount(e.target.value)}
-                            className="bg-transparent text-right font-mono font-bold text-xl outline-none w-1/2"
+                            className="bg-transparent text-right font-mono font-bold text-xl outline-none w-1/2 text-slate-900 placeholder:text-slate-400"
                           />
                         </div>
                         <p className="text-xs text-slate-400 mt-2">Balance: {profile?.balances[exchangeFrom].toFixed(2)}</p>
@@ -926,7 +994,7 @@ export default function App() {
                           <select 
                             value={exchangeTo}
                             onChange={(e) => setExchangeTo(e.target.value as CurrencyKey)}
-                            className="bg-transparent font-bold text-xl outline-none"
+                            className="bg-transparent font-bold text-xl outline-none text-slate-900"
                           >
                             {(Object.keys(CURRENCIES) as CurrencyKey[]).map(k => (
                               <option key={k} value={k}>{k}</option>
@@ -995,7 +1063,9 @@ export default function App() {
             onClick={() => setActiveTab(item.id as any)}
             className={cn(
               "p-3 rounded-xl transition-all",
-              activeTab === item.id ? "bg-indigo-600 text-white shadow-lg shadow-indigo-100" : "text-slate-400"
+              activeTab === item.id 
+                ? "bg-indigo-600 text-white shadow-lg shadow-indigo-100" 
+                : "text-slate-400"
             )}
           >
             <item.icon size={24} />
@@ -1009,6 +1079,7 @@ export default function App() {
           onClose={() => {
             setLastTransfer(null);
           }}
+          showNotification={showNotification}
           title={lastTransfer.type === 'transfer' ? "Transfer Receipt" : "Exchange Receipt"}
         />
       )}

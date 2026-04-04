@@ -63,7 +63,8 @@ export const CURRENCIES = {
   CAURA: { name: 'CAURA', rate: 0.25, nation: 'Cultural Republic of Auralis' },
   FARISTEL: { name: 'FARISTEL', rate: 1.0, nation: 'Kingdom of Faris' },
   SOLARIS: { name: 'SOLARIS', rate: 1.5, nation: 'Imperium Luminaria' }, // Assigned a rate for exchange logic
-  UNITED_LAND_KING: { name: 'UNITED LAND KING', rate: 0.75, nation: 'Republic of United Land' }
+  UNITED_LAND_KING: { name: 'UNITED LAND KING', rate: 0.75, nation: 'Republic of United Land' },
+  CHESSAR: { name: 'CHESSAR', rate: 4.17, nation: 'Cheese Kingdom' }
 };
 
 export type CurrencyKey = keyof typeof CURRENCIES;
