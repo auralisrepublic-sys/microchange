@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { onAuthStateChanged, signInWithPopup, signOut, User as FirebaseUser } from 'firebase/auth';
 import { doc, getDoc, setDoc, deleteDoc, serverTimestamp, onSnapshot, collection, query, where, orderBy, limit, getDocs, runTransaction, Timestamp } from 'firebase/firestore';
-import { auth, db, googleProvider, CURRENCIES, CurrencyKey, UserProfile, TransactionRecord, OperationType, handleFirestoreError, Reserve } from './firebase';
+import { auth, db, googleProvider, CURRENCIES, CurrencyKey, UserProfile, TransactionRecord, OperationType, handleFirestoreError, Reserve, Product } from './firebase';
 import { Wallet, ArrowLeftRight, Send, User as UserIcon, LogOut, QrCode, TrendingUp, History, ShieldCheck, Globe, Coins, Camera, X, CheckCircle2, Download, RefreshCw, FileText, Info, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import QRCode from 'react-qr-code';
@@ -177,13 +177,39 @@ const ReceiptModal = ({ tx, onClose, showNotification, title = "Transfer Success
   );
 };
 
-const Navbar = ({ user, onSignOut }: { user: UserProfile | null; onSignOut: () => void }) => (
+const Navbar = ({ 
+  user, 
+  onSignOut, 
+  mode, 
+  onToggleMode 
+}: { 
+  user: UserProfile | null; 
+  onSignOut: () => void; 
+  mode: 'change' | 'shop';
+  onToggleMode: () => void;
+}) => (
   <nav className="fixed top-0 left-0 right-0 h-16 bg-white/80 backdrop-blur-md border-b border-slate-200 z-50 flex items-center justify-between px-6">
-    <div className="flex items-center gap-2">
-      <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-200">
-        <Globe className="text-white w-6 h-6" />
+    <div className="flex items-center gap-4">
+      <div className="flex items-center gap-2">
+        <div className={cn(
+          "w-10 h-10 rounded-xl flex items-center justify-center shadow-lg transition-all duration-500",
+          mode === 'change' ? "bg-indigo-600 shadow-indigo-200" : "bg-amber-500 shadow-amber-200"
+        )}>
+          {mode === 'change' ? <Globe className="text-white w-6 h-6" /> : <ShieldCheck className="text-white w-6 h-6" />}
+        </div>
+        <span className="font-bold text-xl tracking-tight text-slate-900">
+          Micro<span className={cn("transition-colors duration-500", mode === 'change' ? "text-indigo-600" : "text-amber-500")}>
+            {mode === 'change' ? 'Change' : 'Shop'}
+          </span>
+        </span>
       </div>
-      <span className="font-bold text-xl tracking-tight text-slate-900">Micro<span className="text-indigo-600">Change</span></span>
+      <button 
+        onClick={onToggleMode}
+        className="p-2 hover:bg-slate-100 rounded-full transition-all text-slate-400 hover:text-slate-900"
+        title={mode === 'change' ? "Switch to MicroShop" : "Switch to MicroChange"}
+      >
+        <ArrowLeftRight size={20} className={cn("transition-transform duration-500", mode === 'shop' && "rotate-180")} />
+      </button>
     </div>
     <div className="flex items-center gap-4">
       {user && (
@@ -537,75 +563,371 @@ const DeleteConfirmModal = ({
   );
 };
 
-const TermsModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) => {
+const ProductCard: React.FC<{ 
+  product: Product; 
+  onBuy: (p: Product) => void; 
+  isOwner: boolean;
+}> = ({ 
+  product, 
+  onBuy, 
+  isOwner 
+}) => (
+  <motion.div 
+    whileHover={{ y: -4 }}
+    className="p-6 bg-white rounded-[2.5rem] border border-slate-100 shadow-sm hover:shadow-xl transition-all space-y-4 flex flex-col"
+  >
+    <div className="flex justify-between items-start">
+      <div className="p-3 bg-amber-50 text-amber-600 rounded-2xl">
+        <Globe size={24} />
+      </div>
+      <span className="text-[10px] font-bold uppercase tracking-widest px-2 py-1 bg-slate-100 rounded-full text-slate-500">
+        {product.currency}
+      </span>
+    </div>
+    <div className="flex-1">
+      <h3 className="font-bold text-slate-900 text-lg leading-tight">{product.name}</h3>
+      <p className="text-slate-500 text-sm mt-1 line-clamp-2">{product.description}</p>
+      <div className="mt-4">
+        <p className="text-xs text-slate-400 font-medium uppercase tracking-wider">Price</p>
+        <p className="text-2xl font-black font-mono text-amber-500">
+          {product.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+        </p>
+      </div>
+    </div>
+    <div className="pt-4 border-t border-slate-50 flex items-center justify-between">
+      <div className="flex flex-col">
+        <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Seller</span>
+        <span className="text-xs font-bold text-slate-700">{product.sellerAlias}</span>
+      </div>
+      {!isOwner && (
+        <button 
+          onClick={() => onBuy(product)}
+          className="px-6 py-2 bg-amber-500 text-white rounded-xl font-bold text-sm hover:bg-amber-600 transition-all shadow-lg shadow-amber-100"
+        >
+          Buy Now
+        </button>
+      )}
+      {isOwner && (
+        <span className="px-3 py-1 bg-slate-100 text-slate-500 rounded-lg text-[10px] font-bold uppercase tracking-widest">
+          Your Item
+        </span>
+      )}
+    </div>
+  </motion.div>
+);
+
+const ProductModal = ({ 
+  isOpen, 
+  onClose, 
+  onConfirm,
+  currencies
+}: { 
+  isOpen: boolean; 
+  onClose: () => void; 
+  onConfirm: (name: string, desc: string, price: number, curr: CurrencyKey) => Promise<void>;
+  currencies: any;
+}) => {
+  const [name, setName] = useState('');
+  const [desc, setDesc] = useState('');
+  const [price, setPrice] = useState('');
+  const [curr, setCurr] = useState<CurrencyKey>('CAURA');
+  const [loading, setLoading] = useState(false);
+
   if (!isOpen) return null;
+
+  const handleConfirm = async () => {
+    if (!name || !price) return;
+    setLoading(true);
+    try {
+      await onConfirm(name, desc, parseFloat(price), curr);
+      onClose();
+      setName('');
+      setDesc('');
+      setPrice('');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
-    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-6">
+    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[110] flex items-center justify-center p-6">
       <motion.div 
         initial={{ opacity: 0, scale: 0.95, y: 20 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
-        className="bg-white w-full max-w-2xl rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col max-h-[80vh]"
+        className="bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl overflow-hidden"
       >
-        <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-          <div className="flex items-center gap-3 text-indigo-600">
-            <FileText size={32} />
-            <h2 className="text-2xl font-black tracking-tight">Terms & Privacy</h2>
+        <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-amber-50/30">
+          <div className="flex items-center gap-3 text-amber-600">
+            <Globe size={24} />
+            <h2 className="text-xl font-black tracking-tight uppercase">List New Product</h2>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-slate-200 rounded-full transition-colors">
-            <X size={24} />
+          <button onClick={onClose} className="p-2 hover:bg-white rounded-full transition-colors">
+            <X size={20} />
           </button>
         </div>
-        
-        <div className="p-8 overflow-y-auto space-y-8 text-slate-600 leading-relaxed">
-          <section className="space-y-3">
-            <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-              <ShieldCheck className="text-indigo-600" size={20} />
-              Terms of Service
-            </h3>
-            <p className="text-sm">
-              By using MicroChange, you agree to the following terms:
+        <div className="p-8 space-y-6">
+          <div className="p-4 bg-amber-50 border border-amber-100 rounded-2xl space-y-2">
+            <p className="text-[10px] font-bold text-amber-800 uppercase tracking-widest">The Golden Rule</p>
+            <p className="text-xs text-amber-900 italic font-medium">
+              "Everything sold in MicroShop ceases to exist outside the micronational ecosystem."
             </p>
-            <ul className="list-disc pl-5 text-sm space-y-2">
-              <li>You are responsible for all transactions initiated from your account.</li>
-              <li>Transactions are final and cannot be reversed once confirmed.</li>
-              <li>The platform is provided "as is" without any warranties.</li>
-              <li>Exchange rates are dynamic and subject to change based on market conditions.</li>
-            </ul>
-          </section>
+          </div>
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-1">Product Name</label>
+            <input 
+              type="text" 
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="What are you selling?"
+              className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-2 focus:ring-amber-500 outline-none transition-all font-medium"
+            />
+          </div>
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-1">Description</label>
+            <textarea 
+              value={desc}
+              onChange={(e) => setDesc(e.target.value)}
+              placeholder="Describe your product..."
+              rows={3}
+              className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-2 focus:ring-amber-500 outline-none transition-all font-medium resize-none"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-1">Price</label>
+              <input 
+                type="number" 
+                value={price}
+                onChange={(e) => setPrice(e.target.value)}
+                placeholder="0.00"
+                className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-2 focus:ring-amber-500 outline-none transition-all font-mono font-bold"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-1">Currency</label>
+              <select 
+                value={curr}
+                onChange={(e) => setCurr(e.target.value as CurrencyKey)}
+                className="w-full p-4 bg-slate-50 border border-slate-100 rounded-2xl focus:ring-2 focus:ring-amber-500 outline-none transition-all font-bold appearance-none"
+              >
+                {Object.keys(currencies).map(c => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <button 
+            onClick={handleConfirm}
+            disabled={loading || !name || !price}
+            className="w-full py-4 bg-amber-500 text-white rounded-2xl font-bold text-lg hover:bg-amber-600 transition-all shadow-lg shadow-amber-100 disabled:opacity-50 flex items-center justify-center gap-2"
+          >
+            {loading ? <RefreshCw className="animate-spin" size={20} /> : <CheckCircle2 size={20} />}
+            {loading ? 'Listing...' : 'List Product'}
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+};
 
-          <section className="space-y-3">
-            <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
-              <Info className="text-indigo-600" size={20} />
-              How we use your information
-            </h3>
-            <p className="text-sm">
-              Your privacy is important to us. We collect and use data to provide a secure and efficient exchange experience:
-            </p>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                <h4 className="font-bold text-slate-900 text-xs uppercase tracking-widest mb-2">Identity</h4>
-                <p className="text-xs">We store your name and email from Google to manage your account and prevent fraud.</p>
+const PurchaseModal = ({ 
+  isOpen, 
+  onClose, 
+  product, 
+  onConfirm,
+  balances,
+  currencies
+}: { 
+  isOpen: boolean; 
+  onClose: () => void; 
+  product: Product | null; 
+  onConfirm: (curr: CurrencyKey) => Promise<void>;
+  balances: Record<string, number>;
+  currencies: any;
+}) => {
+  const [selectedCurr, setSelectedCurr] = useState<CurrencyKey>('CAURA');
+  const [loading, setLoading] = useState(false);
+
+  if (!isOpen || !product) return null;
+
+  const productRate = currencies[product.currency].rate;
+  const paymentRate = currencies[selectedCurr].rate;
+  const finalPrice = (product.price * productRate) / paymentRate;
+  const hasBalance = (balances[selectedCurr] || 0) >= finalPrice;
+
+  const handleConfirm = async () => {
+    if (!hasBalance) return;
+    setLoading(true);
+    try {
+      await onConfirm(selectedCurr);
+      onClose();
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[110] flex items-center justify-center p-6">
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.95, y: 20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        className="bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl overflow-hidden"
+      >
+        <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-amber-50/30">
+          <div className="flex items-center gap-3 text-amber-600">
+            <Coins size={24} />
+            <h2 className="text-xl font-black tracking-tight uppercase">Confirm Purchase</h2>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-white rounded-full transition-colors">
+            <X size={20} />
+          </button>
+        </div>
+        <div className="p-8 space-y-6">
+          <div className="bg-slate-50 p-6 rounded-3xl border border-slate-100 space-y-2">
+            <h3 className="font-bold text-slate-900">{product.name}</h3>
+            <p className="text-sm text-slate-500">{product.description}</p>
+            <div className="pt-4 flex justify-between items-end">
+              <div>
+                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Original Price</p>
+                <p className="text-lg font-bold text-slate-900">{product.price} {product.currency}</p>
               </div>
-              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                <h4 className="font-bold text-slate-900 text-xs uppercase tracking-widest mb-2">Transactions</h4>
-                <p className="text-xs">We keep a permanent record of all transfers and exchanges to provide you with a history and receipts.</p>
-              </div>
-              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                <h4 className="font-bold text-slate-900 text-xs uppercase tracking-widest mb-2">Aliases</h4>
-                <p className="text-xs">Your unique alias (e.g., MCRO...) is used to identify you in the network without exposing your email to others.</p>
-              </div>
-              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
-                <h4 className="font-bold text-slate-900 text-xs uppercase tracking-widest mb-2">Security</h4>
-                <p className="text-xs">All data is stored securely in Firebase and is only accessible through authenticated requests.</p>
+              <div className="text-right">
+                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Seller</p>
+                <p className="text-sm font-bold text-slate-600">{product.sellerAlias}</p>
               </div>
             </div>
-          </section>
-        </div>
+          </div>
 
-        <div className="p-8 bg-slate-50 border-t border-slate-100">
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest ml-1">Pay With</label>
+              <div className="grid grid-cols-2 gap-2">
+                {Object.keys(currencies).map(c => (
+                  <button
+                    key={c}
+                    onClick={() => setSelectedCurr(c as CurrencyKey)}
+                    className={cn(
+                      "p-3 rounded-xl border text-xs font-bold transition-all",
+                      selectedCurr === c 
+                        ? "bg-amber-500 border-amber-500 text-white shadow-lg shadow-amber-100" 
+                        : "bg-white border-slate-100 text-slate-600 hover:border-amber-200"
+                    )}
+                  >
+                    {c}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="p-6 bg-amber-50 rounded-3xl border border-amber-100 flex justify-between items-center">
+              <div>
+                <p className="text-[10px] text-amber-600 font-bold uppercase tracking-widest">Total to Pay</p>
+                <p className="text-2xl font-black font-mono text-amber-700">
+                  {finalPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {selectedCurr}
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="text-[10px] text-amber-600 font-bold uppercase tracking-widest">Your Balance</p>
+                <p className={cn("text-sm font-bold", hasBalance ? "text-emerald-600" : "text-red-500")}>
+                  {(balances[selectedCurr] || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })} {selectedCurr}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <button 
+            onClick={handleConfirm}
+            disabled={loading || !hasBalance}
+            className="w-full py-4 bg-amber-500 text-white rounded-2xl font-bold text-lg hover:bg-amber-600 transition-all shadow-lg shadow-amber-100 disabled:opacity-50 flex items-center justify-center gap-2"
+          >
+            {loading ? <RefreshCw className="animate-spin" size={20} /> : <CheckCircle2 size={20} />}
+            {loading ? 'Processing...' : 'Confirm & Pay'}
+          </button>
+          {!hasBalance && (
+            <p className="text-center text-xs text-red-500 font-bold">Insufficient balance in {selectedCurr}</p>
+          )}
+        </div>
+      </motion.div>
+    </div>
+  );
+};
+
+const TermsModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) => {
+  if (!isOpen) return null;
+  return (
+    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[200] flex items-center justify-center p-6">
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="bg-white w-full max-w-2xl rounded-[2.5rem] shadow-2xl overflow-hidden max-h-[80vh] flex flex-col"
+      >
+        <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+          <div className="flex items-center gap-3 text-indigo-600">
+            <FileText size={24} />
+            <h2 className="text-xl font-black tracking-tight uppercase">Terms & Conditions - MicroShop</h2>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-white rounded-full transition-colors">
+            <X size={20} />
+          </button>
+        </div>
+        <div className="p-8 overflow-y-auto space-y-6 text-slate-600 leading-relaxed">
+          <div className="p-6 bg-amber-50 border border-amber-100 rounded-3xl space-y-3">
+            <h3 className="font-black text-amber-900 uppercase text-xs tracking-widest flex items-center gap-2">
+              <ShieldCheck size={16} />
+              The Golden Rule
+            </h3>
+            <p className="text-amber-900 font-medium italic">
+              "As long as you can say this phrase with total honesty, you're fine: 'Everything sold in MicroShop ceases to exist outside the micronational ecosystem.'"
+            </p>
+          </div>
+
+          <div className="space-y-4">
+            <p className="font-bold text-slate-900">Last update: 04/05/2026</p>
+            <p>MicroShop is the virtual store of the MicroChange ecosystem, intended exclusively for the exchange of micronational virtual goods and services using virtual credits with no real monetary value.</p>
+            <p>By posting a product or service on MicroShop, the user accepts the following terms:</p>
+          </div>
+
+          <div className="space-y-4">
+            <h3 className="font-bold text-slate-900 uppercase text-sm tracking-widest">1. Nature of MicroShop</h3>
+            <p>MicroShop operates within the MicroChange ecosystem as an exchange environment for fictional, symbolic, and digital elements, similar to internal stores in video games like Fortnite.</p>
+            <p>The credits used: Do not constitute money, Have no real monetary value, Are not transferable to real currencies, Do not represent financial assets.</p>
+          </div>
+
+          <div className="space-y-4">
+            <h3 className="font-bold text-slate-900 uppercase text-sm tracking-widest">2. What can be posted</h3>
+            <p>Only goods and services that exist solely within the micronational ecosystem, are fictional, symbolic, or digital, have no physical existence, and cannot be used outside of MicroChange/MicroShop are allowed.</p>
+            <p>Examples: Fictional micronational lands, Symbolic titles and ranks, Internal services, Digital benefits, Internal advertising.</p>
+          </div>
+
+          <div className="space-y-4">
+            <h3 className="font-bold text-slate-900 uppercase text-sm tracking-widest">3. What is strictly prohibited</h3>
+            <p>It is forbidden to offer: Physical products (t-shirts, mugs, shipping, etc.), Real-world services (design, programming, hosting, etc.), Real external domains or services, Gift cards or vouchers, Any physical good or promise of real monetary value.</p>
+          </div>
+
+          <div className="space-y-4">
+            <h3 className="font-bold text-slate-900 uppercase text-sm tracking-widest">4. Prohibition of real equivalence</h3>
+            <p>References in dollars or other currencies are for illustrative purposes only to understand the internal scale of virtual credits and do not represent real monetary value.</p>
+          </div>
+
+          <div className="space-y-4">
+            <h3 className="font-bold text-slate-900 uppercase text-sm tracking-widest">5. External exchanges</h3>
+            <p>MicroShop does not promote or allow the exchange of virtual credits for real-world goods or services. Any external agreement is private and outside the platform.</p>
+          </div>
+
+          <div className="space-y-4">
+            <h3 className="font-bold text-slate-900 uppercase text-sm tracking-widest">6. Publisher responsibility</h3>
+            <p>The publisher declares that their post is 100% virtual and symbolic, and accepts immediate removal if it violates these rules.</p>
+          </div>
+
+          <div className="space-y-4">
+            <h3 className="font-bold text-slate-900 uppercase text-sm tracking-widest">7. Moderation</h3>
+            <p>MicroShop reserves the right to remove posts and suspend users who attempt to use the platform as a real means of payment.</p>
+          </div>
+        </div>
+        <div className="p-6 border-t border-slate-100 bg-slate-50 flex justify-end">
           <button 
             onClick={onClose}
-            className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold text-lg hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200"
+            className="px-8 py-3 bg-indigo-600 text-white rounded-2xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100"
           >
             I Understand
           </button>
@@ -653,6 +975,12 @@ export default function App() {
     reserve: null
   });
   const [lastTransfer, setLastTransfer] = useState<any>(null);
+  const [mode, setMode] = useState<'change' | 'shop'>('change');
+  const [products, setProducts] = useState<Product[]>([]);
+  const [productModal, setProductModal] = useState<{ isOpen: boolean; product: Product | null }>({
+    isOpen: false,
+    product: null
+  });
   const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
 
   const showNotification = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
@@ -770,6 +1098,18 @@ export default function App() {
       setReserves(res);
     }, (error) => {
       handleFirestoreError(error, OperationType.GET, `users/${user.uid}/reserves`);
+    });
+    return () => unsubscribe();
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) return;
+    const q = query(collection(db, 'products'), orderBy('createdAt', 'desc'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const prod = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Product));
+      setProducts(prod);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'products');
     });
     return () => unsubscribe();
   }, [user]);
@@ -1159,6 +1499,86 @@ export default function App() {
     }
   };
 
+  const createProduct = async (name: string, description: string, price: number, currency: CurrencyKey) => {
+    if (!user || !profile) return;
+    try {
+      const productRef = doc(collection(db, 'products'));
+      await setDoc(productRef, {
+        id: productRef.id,
+        name,
+        description,
+        price,
+        currency,
+        sellerUid: user.uid,
+        sellerAlias: profile.alias,
+        createdAt: serverTimestamp()
+      });
+      showNotification("Product listed successfully!", "success");
+    } catch (error: any) {
+      showNotification("Failed to list product: " + error.message, "error");
+      handleFirestoreError(error, OperationType.WRITE, 'products');
+    }
+  };
+
+  const buyProduct = async (product: Product, paymentCurrency: CurrencyKey) => {
+    if (!user || !profile) return;
+    
+    try {
+      const productRate = dynamicCurrencies[product.currency].rate;
+      const paymentRate = dynamicCurrencies[paymentCurrency].rate;
+      const finalPrice = (product.price * productRate) / paymentRate;
+
+      if ((profile.balances[paymentCurrency] || 0) < finalPrice) {
+        showNotification("Insufficient balance in selected currency", "error");
+        return;
+      }
+
+      await runTransaction(db, async (transaction) => {
+        const buyerRef = doc(db, 'users', user.uid);
+        const sellerRef = doc(db, 'users', product.sellerUid);
+        const txRef = doc(collection(db, 'transactions'));
+
+        const buyerDoc = await transaction.get(buyerRef);
+        const sellerDoc = await transaction.get(sellerRef);
+
+        if (!buyerDoc.exists() || !sellerDoc.exists()) throw new Error("User not found");
+
+        const buyerData = buyerDoc.data() as UserProfile;
+        const sellerData = sellerDoc.data() as UserProfile;
+
+        if ((buyerData.balances[paymentCurrency] || 0) < finalPrice) throw new Error("Insufficient balance");
+
+        // Update buyer balance
+        transaction.update(buyerRef, {
+          [`balances.${paymentCurrency}`]: (buyerData.balances[paymentCurrency] || 0) - finalPrice
+        });
+
+        // Update seller balance (seller receives in product's original currency)
+        transaction.update(sellerRef, {
+          [`balances.${product.currency}`]: (sellerData.balances[product.currency] || 0) + product.price
+        });
+
+        transaction.set(txRef, {
+          fromUid: user.uid,
+          toUid: product.sellerUid,
+          fromAlias: profile.alias,
+          toAlias: product.sellerAlias,
+          amount: finalPrice,
+          currency: paymentCurrency,
+          timestamp: serverTimestamp(),
+          type: 'purchase',
+          productId: product.id,
+          productName: product.name
+        });
+      });
+
+      showNotification(`Successfully purchased ${product.name}!`, "success");
+    } catch (error: any) {
+      showNotification("Purchase failed: " + error.message, "error");
+      handleFirestoreError(error, OperationType.WRITE, 'transactions');
+    }
+  };
+
   const updateUnitedLandRate = async (newRate: number) => {
     try {
       await setDoc(doc(db, 'settings', 'currencies'), {
@@ -1185,7 +1605,12 @@ export default function App() {
   if (!user) {
     return (
       <div className="min-h-screen bg-slate-50 selection:bg-indigo-100 selection:text-indigo-900">
-        <Navbar user={null} onSignOut={() => {}} />
+        <Navbar 
+          user={null} 
+          onSignOut={() => {}} 
+          mode={mode} 
+          onToggleMode={() => setMode(prev => prev === 'change' ? 'shop' : 'change')} 
+        />
         <div className="max-w-6xl mx-auto px-6 py-20 flex flex-col lg:flex-row items-center gap-16">
           <div className="flex-1 space-y-8 text-center lg:text-left">
             <motion.div 
@@ -1258,11 +1683,9 @@ export default function App() {
                           <TrendingUp size={20} className="text-indigo-600" />
                         </div>
                         <div>
-                          <p className="font-bold text-slate-900">{c.name}</p>
-                          <p className="text-[10px] text-slate-500 font-bold uppercase tracking-tighter">{c.nation}</p>
+                          <p className="font-bold text-slate-900">{c.name} = Value reference: {c.rate.toFixed(2)} USD</p>
                         </div>
                       </div>
-                      <p className="font-mono font-bold text-indigo-600">${c.rate.toFixed(2)}</p>
                     </div>
                   );
                 })}
@@ -1270,11 +1693,21 @@ export default function App() {
             </div>
           </motion.div>
         </div>
-        <footer className="max-w-6xl mx-auto px-6 py-12 border-t border-slate-200 flex flex-col md:flex-row items-center justify-between gap-6 text-slate-400 text-sm">
-          <p>© 2026 MicroChange Exchange Network. All rights reserved.</p>
-          <div className="flex items-center gap-6">
-            <button onClick={() => setShowTerms(true)} className="hover:text-indigo-600 transition-colors font-medium">Terms & Conditions</button>
-            <button onClick={() => setShowTerms(true)} className="hover:text-indigo-600 transition-colors font-medium">Privacy Policy</button>
+        <footer className="max-w-6xl mx-auto px-6 py-12 border-t border-slate-200 space-y-8">
+          <div className="text-slate-400 text-xs leading-relaxed text-center max-w-4xl mx-auto italic space-y-4">
+            <p>
+              The dollar equivalencies shown on this platform are for illustrative reference only to understand the internal scale of virtual credits. They do not represent real monetary value, nor do they constitute money, financial assets, or a means of payment. MicroShop exclusively offers virtual goods and services within the micronational ecosystem. No available product has physical existence or value in the real world.
+            </p>
+            <p className="text-slate-500 font-bold">
+              The Golden Rule: "Everything sold in MicroShop ceases to exist outside the micronational ecosystem."
+            </p>
+          </div>
+          <div className="flex flex-col md:flex-row items-center justify-between gap-6 text-slate-400 text-sm">
+            <p>© 2026 MicroChange Exchange Network. All rights reserved.</p>
+            <div className="flex items-center gap-6">
+              <button onClick={() => setShowTerms(true)} className="hover:text-indigo-600 transition-colors font-medium">Terms & Conditions</button>
+              <button onClick={() => setShowTerms(true)} className="hover:text-indigo-600 transition-colors font-medium">Privacy Policy</button>
+            </div>
           </div>
         </footer>
         <TermsModal isOpen={showTerms} onClose={() => setShowTerms(false)} />
@@ -1283,6 +1716,7 @@ export default function App() {
   }
 
   if (showSetup) {
+    const [accepted, setAccepted] = useState(false);
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
         <motion.div 
@@ -1316,20 +1750,45 @@ export default function App() {
             ))}
           </div>
 
-          <button 
-            onClick={setupProfile}
-            className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold text-lg hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100"
-          >
-            Create My Account
-          </button>
+          <div className="space-y-4">
+            <div className="flex items-start gap-3 p-4 bg-slate-50 rounded-2xl border border-slate-100">
+              <input 
+                type="checkbox" 
+                id="terms" 
+                checked={accepted}
+                onChange={(e) => setAccepted(e.target.checked)}
+                className="mt-1 w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+              />
+              <label htmlFor="terms" className="text-sm text-slate-600 leading-relaxed">
+                I accept the <button onClick={() => setShowTerms(true)} className="text-indigo-600 font-bold hover:underline">Terms & Conditions</button> and understand that all assets are virtual and have no real-world value.
+              </label>
+            </div>
+
+            <button 
+              onClick={setupProfile}
+              disabled={!accepted}
+              className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold text-lg hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Create My Account
+            </button>
+          </div>
         </motion.div>
+        <TermsModal isOpen={showTerms} onClose={() => setShowTerms(false)} />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 pb-24 md:pb-0 md:pt-20 transition-colors duration-300">
-      <Navbar user={profile} onSignOut={handleSignOut} />
+    <div className={cn(
+      "min-h-screen pb-24 md:pb-0 md:pt-20 transition-colors duration-500",
+      mode === 'change' ? "bg-slate-50" : "bg-amber-50/30"
+    )}>
+      <Navbar 
+        user={profile} 
+        onSignOut={handleSignOut} 
+        mode={mode} 
+        onToggleMode={() => setMode(prev => prev === 'change' ? 'shop' : 'change')} 
+      />
       
       {/* Notification Overlay */}
       <AnimatePresence>
@@ -1354,9 +1813,17 @@ export default function App() {
       </AnimatePresence>
 
       <main className="max-w-6xl mx-auto px-4 md:px-6 py-8">
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-          
-          {/* Sidebar / Navigation */}
+        <AnimatePresence mode="wait">
+          {mode === 'change' ? (
+            <motion.div 
+              key="microchange"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="grid grid-cols-1 lg:grid-cols-12 gap-8"
+            >
+              
+              {/* Sidebar / Navigation */}
           <div className="lg:col-span-3 space-y-4">
             <div className="hidden lg:block space-y-2">
               {[
@@ -1743,8 +2210,88 @@ export default function App() {
               )}
             </AnimatePresence>
           </div>
+        </motion.div>
+      ) : (
+        <motion.div 
+          key="microshop"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -20 }}
+          className="space-y-8"
+        >
+          <div className="flex items-center justify-between flex-wrap gap-4">
+            <div className="space-y-1">
+              <h2 className="text-3xl font-black text-slate-900 uppercase tracking-tight">MicroShop</h2>
+              <p className="text-slate-500 font-medium">Marketplace for the Auralis Network</p>
+            </div>
+            <div className="flex flex-col items-end gap-2">
+              <button 
+                onClick={() => setProductModal({ isOpen: true, product: null })}
+                className="flex items-center gap-2 px-6 py-3 bg-amber-500 text-white rounded-2xl font-bold hover:bg-amber-600 transition-all shadow-xl shadow-amber-100"
+              >
+                <Coins size={20} />
+                Sell Product
+              </button>
+              <div className="max-w-[250px] text-right space-y-2">
+                <div className="space-y-1">
+                  <p className="text-[10px] font-bold text-amber-600 uppercase tracking-widest">Legal Notice</p>
+                  <p className="text-[9px] text-slate-400 leading-tight">
+                    MicroShop exclusively allows the publication of virtual, fictional, and symbolic goods and services within the micronational ecosystem.
+                  </p>
+                </div>
+                <p className="text-[9px] text-amber-600 font-bold italic leading-tight">
+                  "Everything sold in MicroShop ceases to exist outside the micronational ecosystem."
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {products.map(product => (
+              <ProductCard 
+                key={product.id}
+                product={product}
+                isOwner={product.sellerUid === user?.uid}
+                onBuy={(p) => setProductModal({ isOpen: true, product: p })}
+              />
+            ))}
+            {products.length === 0 && (
+              <div className="col-span-full text-center py-32 bg-white rounded-[3rem] border border-dashed border-slate-200">
+                <div className="w-20 h-20 bg-amber-50 rounded-3xl mx-auto flex items-center justify-center mb-6">
+                  <Globe className="text-amber-300" size={40} />
+                </div>
+                <h3 className="text-xl font-bold text-slate-900">The shop is empty</h3>
+                <p className="text-slate-400 mt-2 max-w-xs mx-auto">Be the first to list a product and start earning in any currency!</p>
+              </div>
+            )}
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  </main>
+
+  <footer className="max-w-6xl mx-auto px-6 py-12 border-t border-slate-200 space-y-8">
+    <div className="text-slate-400 text-[10px] leading-relaxed text-center max-w-4xl mx-auto italic space-y-4">
+      <p>
+        The dollar equivalencies shown on this platform are for illustrative reference only to understand the internal scale of virtual credits. They do not represent real monetary value, nor do they constitute money, financial assets, or a means of payment. MicroShop exclusively offers virtual goods and services within the micronational ecosystem. No available product has physical existence or value in the real world.
+      </p>
+      <p className="text-slate-500 font-bold">
+        The Golden Rule: "Everything sold in MicroShop ceases to exist outside the micronational ecosystem."
+      </p>
+    </div>
+    <div className="flex flex-col md:flex-row items-center justify-between gap-6 text-slate-400 text-xs">
+      <div className="flex items-center gap-2">
+        <div className="w-8 h-8 bg-slate-100 rounded-lg flex items-center justify-center">
+          <Globe size={16} />
         </div>
-      </main>
+        <span className="font-bold tracking-tight">MicroChange & MicroShop</span>
+      </div>
+      <div className="flex items-center gap-6">
+        <button onClick={() => setShowTerms(true)} className="hover:text-indigo-600 transition-colors">Terms & Conditions</button>
+        <span>© 2026 Auralis Network</span>
+      </div>
+    </div>
+  </footer>
 
       {/* Mobile Navigation */}
       <div className="md:hidden fixed bottom-0 left-0 right-0 h-20 bg-white border-t border-slate-200 flex items-center justify-around px-4 z-50">
@@ -1808,6 +2355,26 @@ export default function App() {
         onConfirm={async () => {
           if (deleteConfirm.reserve) {
             await deleteReserve(deleteConfirm.reserve.id);
+          }
+        }}
+      />
+
+      <ProductModal 
+        isOpen={productModal.isOpen && !productModal.product}
+        currencies={dynamicCurrencies}
+        onClose={() => setProductModal({ isOpen: false, product: null })}
+        onConfirm={createProduct}
+      />
+
+      <PurchaseModal 
+        isOpen={productModal.isOpen && !!productModal.product}
+        product={productModal.product}
+        balances={profile?.balances || {}}
+        currencies={dynamicCurrencies}
+        onClose={() => setProductModal({ isOpen: false, product: null })}
+        onConfirm={async (paymentCurr) => {
+          if (productModal.product) {
+            await buyProduct(productModal.product, paymentCurr);
           }
         }}
       />

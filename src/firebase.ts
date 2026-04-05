@@ -90,9 +90,11 @@ export interface TransactionRecord {
   amount: number;
   currency: CurrencyKey;
   timestamp: Timestamp;
-  type: 'transfer' | 'exchange' | 'reserve_deposit' | 'reserve_withdraw';
+  type: 'transfer' | 'exchange' | 'reserve_deposit' | 'reserve_withdraw' | 'purchase';
   reserveId?: string;
   reserveName?: string;
+  productId?: string;
+  productName?: string;
 }
 
 export interface Reserve {
@@ -100,5 +102,17 @@ export interface Reserve {
   name: string;
   currency: CurrencyKey;
   balance: number;
+  createdAt: Timestamp;
+}
+
+export interface Product {
+  id: string;
+  name: string;
+  description: string;
+  price: number;
+  currency: CurrencyKey;
+  sellerUid: string;
+  sellerAlias: string;
+  imageUrl?: string;
   createdAt: Timestamp;
 }
