@@ -566,6 +566,8 @@ const TermsModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void 
               By using MicroChange, you agree to the following terms:
             </p>
             <ul className="list-disc pl-5 text-sm space-y-2">
+              <li>This platform is strictly for the exchange of virtual items and fictional assets.</li>
+              <li>The use of this system for real-world currency transactions or illegal activities is prohibited.</li>
               <li>You are responsible for all transactions initiated from your account.</li>
               <li>Transactions are final and cannot be reversed once confirmed.</li>
               <li>The platform is provided "as is" without any warranties.</li>
@@ -633,6 +635,7 @@ export default function App() {
   const [newMessage, setNewMessage] = useState('');
   const [showSetup, setShowSetup] = useState(false);
   const [showTerms, setShowTerms] = useState(false);
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [preferredCurrency, setPreferredCurrency] = useState<CurrencyKey>('CAURA');
   const [dynamicCurrencies, setDynamicCurrencies] = useState<Record<CurrencyKey, { name: string; rate: number; nation: string }>>(CURRENCIES);
 
@@ -1480,12 +1483,28 @@ export default function App() {
             ))}
           </div>
 
-          <button 
-            onClick={setupProfile}
-            className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold text-lg hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100"
-          >
-            Create My Account
-          </button>
+          <div className="space-y-4">
+            <div className="flex items-start gap-3 p-4 bg-slate-50 rounded-2xl border border-slate-100">
+              <input 
+                type="checkbox" 
+                id="terms"
+                checked={acceptedTerms}
+                onChange={(e) => setAcceptedTerms(e.target.checked)}
+                className="mt-1 w-5 h-5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+              />
+              <label htmlFor="terms" className="text-sm text-slate-600 cursor-pointer select-none">
+                I accept the <button onClick={() => setShowTerms(true)} className="text-indigo-600 font-bold hover:underline">Terms and Conditions</button> and acknowledge that this platform is only for virtual item exchanges.
+              </label>
+            </div>
+
+            <button 
+              onClick={setupProfile}
+              disabled={!acceptedTerms}
+              className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold text-lg hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 disabled:opacity-50 disabled:bg-slate-300 disabled:shadow-none"
+            >
+              Create My Account
+            </button>
+          </div>
         </motion.div>
       </div>
     );
