@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { onAuthStateChanged, signInWithPopup, signOut, User as FirebaseUser } from 'firebase/auth';
 import { doc, getDoc, setDoc, serverTimestamp, onSnapshot, collection, query, where, orderBy, limit, getDocs, runTransaction, Timestamp } from 'firebase/firestore';
 import { auth, db, googleProvider, CURRENCIES, CurrencyKey, UserProfile, TransactionRecord, OperationType, handleFirestoreError } from './firebase';
-import { Wallet, ArrowLeftRight, Send, User as UserIcon, LogOut, QrCode, TrendingUp, History, ShieldCheck, Globe, Coins, Camera, X, CheckCircle2, Download, RefreshCw, FileText } from 'lucide-react';
+import { Wallet, ArrowLeftRight, Send, User as UserIcon, LogOut, QrCode, TrendingUp, History, ShieldCheck, Globe, Coins, Camera, X, CheckCircle2, Download, RefreshCw, FileText, Info } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import QRCode from 'react-qr-code';
 import { cn } from './lib/utils';
@@ -319,6 +319,84 @@ const AdminPanel = ({ currentRate, onUpdate }: { currentRate: number, onUpdate: 
   );
 };
 
+const TermsModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) => {
+  if (!isOpen) return null;
+  return (
+    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-6">
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.95, y: 20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        className="bg-white w-full max-w-2xl rounded-[2.5rem] shadow-2xl overflow-hidden flex flex-col max-h-[80vh]"
+      >
+        <div className="p-8 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+          <div className="flex items-center gap-3 text-indigo-600">
+            <FileText size={32} />
+            <h2 className="text-2xl font-black tracking-tight">Terms & Privacy</h2>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-slate-200 rounded-full transition-colors">
+            <X size={24} />
+          </button>
+        </div>
+        
+        <div className="p-8 overflow-y-auto space-y-8 text-slate-600 leading-relaxed">
+          <section className="space-y-3">
+            <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+              <ShieldCheck className="text-indigo-600" size={20} />
+              Terms of Service
+            </h3>
+            <p className="text-sm">
+              By using MicroChange, you agree to the following terms:
+            </p>
+            <ul className="list-disc pl-5 text-sm space-y-2">
+              <li>You are responsible for all transactions initiated from your account.</li>
+              <li>Transactions are final and cannot be reversed once confirmed.</li>
+              <li>The platform is provided "as is" without any warranties.</li>
+              <li>Exchange rates are dynamic and subject to change based on market conditions.</li>
+            </ul>
+          </section>
+
+          <section className="space-y-3">
+            <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+              <Info className="text-indigo-600" size={20} />
+              How we use your information
+            </h3>
+            <p className="text-sm">
+              Your privacy is important to us. We collect and use data to provide a secure and efficient exchange experience:
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                <h4 className="font-bold text-slate-900 text-xs uppercase tracking-widest mb-2">Identity</h4>
+                <p className="text-xs">We store your name and email from Google to manage your account and prevent fraud.</p>
+              </div>
+              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                <h4 className="font-bold text-slate-900 text-xs uppercase tracking-widest mb-2">Transactions</h4>
+                <p className="text-xs">We keep a permanent record of all transfers and exchanges to provide you with a history and receipts.</p>
+              </div>
+              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                <h4 className="font-bold text-slate-900 text-xs uppercase tracking-widest mb-2">Aliases</h4>
+                <p className="text-xs">Your unique alias (e.g., MCRO...) is used to identify you in the network without exposing your email to others.</p>
+              </div>
+              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                <h4 className="font-bold text-slate-900 text-xs uppercase tracking-widest mb-2">Security</h4>
+                <p className="text-xs">All data is stored securely in Firebase and is only accessible through authenticated requests.</p>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <div className="p-8 bg-slate-50 border-t border-slate-100">
+          <button 
+            onClick={onClose}
+            className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold text-lg hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200"
+          >
+            I Understand
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+};
+
 // --- Main App ---
 
 export default function App() {
@@ -328,6 +406,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'wallet' | 'transfer' | 'exchange' | 'history' | 'admin'>('wallet');
   const [transactions, setTransactions] = useState<TransactionRecord[]>([]);
   const [showSetup, setShowSetup] = useState(false);
+  const [showTerms, setShowTerms] = useState(false);
   const [preferredCurrency, setPreferredCurrency] = useState<CurrencyKey>('CAURA');
   const [dynamicCurrencies, setDynamicCurrencies] = useState<Record<CurrencyKey, { name: string; rate: number; nation: string }>>(CURRENCIES);
 
@@ -764,6 +843,14 @@ export default function App() {
             </div>
           </motion.div>
         </div>
+        <footer className="max-w-6xl mx-auto px-6 py-12 border-t border-slate-200 flex flex-col md:flex-row items-center justify-between gap-6 text-slate-400 text-sm">
+          <p>© 2026 MicroChange Exchange Network. All rights reserved.</p>
+          <div className="flex items-center gap-6">
+            <button onClick={() => setShowTerms(true)} className="hover:text-indigo-600 transition-colors font-medium">Terms & Conditions</button>
+            <button onClick={() => setShowTerms(true)} className="hover:text-indigo-600 transition-colors font-medium">Privacy Policy</button>
+          </div>
+        </footer>
+        <TermsModal isOpen={showTerms} onClose={() => setShowTerms(false)} />
       </div>
     );
   }
@@ -866,6 +953,15 @@ export default function App() {
                   {item.label}
                 </button>
               ))}
+              <div className="pt-4 border-t border-slate-100">
+                <button 
+                  onClick={() => setShowTerms(true)}
+                  className="w-full flex items-center gap-3 px-4 py-3 text-slate-400 hover:text-indigo-600 transition-all text-xs font-bold uppercase tracking-widest"
+                >
+                  <FileText size={18} />
+                  Terms & Privacy
+                </button>
+              </div>
             </div>
 
             {/* Profile Summary */}
@@ -1214,6 +1310,8 @@ export default function App() {
           title={lastTransfer.type === 'transfer' ? "Transfer Receipt" : "Exchange Receipt"}
         />
       )}
+
+      <TermsModal isOpen={showTerms} onClose={() => setShowTerms(false)} />
     </div>
   );
 }
