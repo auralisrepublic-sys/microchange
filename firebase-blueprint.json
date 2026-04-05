@@ -15,10 +15,14 @@
             "CAURA": { "type": "number" },
             "FARISTEL": { "type": "number" },
             "SOLARIS": { "type": "number" },
-            "UNITED_LAND_KING": { "type": "number" }
+            "UNITED_LAND_KING": { "type": "number" },
+            "CHESSAR": { "type": "number" },
+            "NEW_GREENIAN_CROWN": { "type": "number" },
+            "ECLAT": { "type": "number" },
+            "VALDORIAN_CREDIT": { "type": "number" }
           }
         },
-        "preferredCurrency": { "type": "string", "enum": ["CAURA", "FARISTEL", "SOLARIS", "UNITED_LAND_KING", "CHESSAR", "NEW_GREENIAN_CROWN", "ECLAT"] },
+        "preferredCurrency": { "type": "string", "enum": ["CAURA", "FARISTEL", "SOLARIS", "UNITED_LAND_KING", "CHESSAR", "NEW_GREENIAN_CROWN", "ECLAT", "VALDORIAN_CREDIT"] },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["uid", "email", "alias", "balances"]

@@ -66,7 +66,8 @@ export const CURRENCIES = {
   UNITED_LAND_KING: { name: 'UNITED LAND KING', rate: 0.75, nation: 'Republic of United Land' },
   CHESSAR: { name: 'CHESSAR', rate: 4.17, nation: 'Cheese Kingdom' },
   NEW_GREENIAN_CROWN: { name: 'NEW GREENIAN CROWN', rate: 1.0, nation: 'New Grennia' },
-  ECLAT: { name: 'Éclat', rate: 0.50, nation: 'Gaelic Kingdom of Mabruenia' }
+  ECLAT: { name: 'Éclat', rate: 0.50, nation: 'Gaelic Kingdom of Mabruenia' },
+  VALDORIAN_CREDIT: { name: 'Valdorian Credit', rate: 1.25, nation: 'Valdora' }
 };
 
 export type CurrencyKey = keyof typeof CURRENCIES;
