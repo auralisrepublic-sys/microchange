@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { onAuthStateChanged, signInWithPopup, signOut, User as FirebaseUser } from 'firebase/auth';
-import { doc, getDoc, setDoc, deleteDoc, serverTimestamp, onSnapshot, collection, query, where, orderBy, limit, getDocs, runTransaction, Timestamp } from 'firebase/firestore';
-import { auth, db, googleProvider, CURRENCIES, CurrencyKey, UserProfile, TransactionRecord, OperationType, handleFirestoreError, Reserve } from './firebase';
-import { Wallet, ArrowLeftRight, Send, User as UserIcon, LogOut, QrCode, TrendingUp, History, ShieldCheck, Globe, Coins, Camera, X, CheckCircle2, Download, RefreshCw, FileText, Info, Trash2 } from 'lucide-react';
+import { doc, getDoc, setDoc, deleteDoc, serverTimestamp, onSnapshot, collection, query, where, orderBy, limit, getDocs, runTransaction, Timestamp, addDoc } from 'firebase/firestore';
+import { auth, db, googleProvider, CURRENCIES, CurrencyKey, UserProfile, TransactionRecord, OperationType, handleFirestoreError, Reserve, Chat, Message } from './firebase';
+import { Wallet, ArrowLeftRight, Send, User as UserIcon, LogOut, QrCode, TrendingUp, History, ShieldCheck, Globe, Coins, Camera, X, CheckCircle2, Download, RefreshCw, FileText, Info, Trash2, MessageSquare, Search, Link as LinkIcon, ArrowLeft } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import QRCode from 'react-qr-code';
 import { cn } from './lib/utils';
@@ -621,9 +621,16 @@ export default function App() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'wallet' | 'transfer' | 'exchange' | 'history' | 'admin' | 'reserves'>('wallet');
+  const [activeTab, setActiveTab] = useState<'wallet' | 'transfer' | 'exchange' | 'history' | 'admin' | 'reserves' | 'chat'>('wallet');
   const [transactions, setTransactions] = useState<TransactionRecord[]>([]);
   const [reserves, setReserves] = useState<Reserve[]>([]);
+  const [chats, setChats] = useState<Chat[]>([]);
+  const [activeChatId, setActiveChatId] = useState<string | null>(null);
+  const [chatMessages, setChatMessages] = useState<Message[]>([]);
+  const [searchAlias, setSearchAlias] = useState('');
+  const [searchResults, setSearchResults] = useState<UserProfile[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [newMessage, setNewMessage] = useState('');
   const [showSetup, setShowSetup] = useState(false);
   const [showTerms, setShowTerms] = useState(false);
   const [preferredCurrency, setPreferredCurrency] = useState<CurrencyKey>('CAURA');
@@ -773,6 +780,156 @@ export default function App() {
     });
     return () => unsubscribe();
   }, [user]);
+
+  useEffect(() => {
+    if (!profile) return;
+    const q = query(
+      collection(db, 'chats'),
+      where('participants', 'array-contains', profile.uid),
+      orderBy('lastUpdatedAt', 'desc')
+    );
+    const unsub = onSnapshot(q, (snapshot) => {
+      const c = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Chat));
+      setChats(c);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, 'chats');
+    });
+    return unsub;
+  }, [profile?.uid]);
+
+  useEffect(() => {
+    if (!activeChatId) {
+      setChatMessages([]);
+      return;
+    }
+    const q = query(
+      collection(db, 'chats', activeChatId, 'messages'),
+      orderBy('createdAt', 'asc'),
+      limit(100)
+    );
+    const unsub = onSnapshot(q, (snapshot) => {
+      const m = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Message));
+      setChatMessages(m);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, `chats/${activeChatId}/messages`);
+    });
+    return unsub;
+  }, [activeChatId]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const inviteAlias = params.get('invite');
+    if (inviteAlias && profile) {
+      window.history.replaceState({}, document.title, window.location.pathname);
+      handleInvite(inviteAlias);
+    }
+  }, [profile]);
+
+  const handleInvite = async (alias: string) => {
+    if (alias === profile?.alias) {
+      showNotification("You cannot invite yourself!", "error");
+      return;
+    }
+    try {
+      const aliasDoc = await getDoc(doc(db, 'aliases', alias));
+      if (aliasDoc.exists()) {
+        const targetUid = aliasDoc.data().uid;
+        const targetProfileDoc = await getDoc(doc(db, 'users', targetUid));
+        if (targetProfileDoc.exists()) {
+          const targetProfile = targetProfileDoc.data() as UserProfile;
+          await startChat(targetProfile);
+          setActiveTab('chat');
+        }
+      } else {
+        showNotification("User not found.", "error");
+      }
+    } catch (error) {
+      handleFirestoreError(error, OperationType.GET, `aliases/${alias}`);
+    }
+  };
+
+  const startChat = async (targetUser: UserProfile) => {
+    if (!profile) return;
+    try {
+      const chatId = [profile.uid, targetUser.uid].sort().join('_');
+      const chatRef = doc(db, 'chats', chatId);
+      
+      // We use a try-catch specifically for the getDoc to handle potential permission issues
+      // if the chat exists but we aren't participants (shouldn't happen with our ID logic)
+      let chatExists = false;
+      try {
+        const chatDoc = await getDoc(chatRef);
+        chatExists = chatDoc.exists();
+      } catch (e) {
+        // If we can't even check if it exists, assume we need to create it or it's a new chat
+        chatExists = false;
+      }
+      
+      if (!chatExists) {
+        await setDoc(chatRef, {
+          participants: [profile.uid, targetUser.uid],
+          participantAliases: {
+            [profile.uid]: profile.alias,
+            [targetUser.uid]: targetUser.alias
+          },
+          createdAt: serverTimestamp(),
+          lastUpdatedAt: serverTimestamp()
+        });
+      }
+      setActiveChatId(chatId);
+      setActiveTab('chat');
+    } catch (error) {
+      console.error("Error starting chat:", error);
+      showNotification("Could not start chat. Please try again.", "error");
+    }
+  };
+
+  const sendMessage = async () => {
+    if (!newMessage.trim() || !activeChatId || !profile) return;
+    const text = newMessage.trim();
+    setNewMessage('');
+    try {
+      const chatRef = doc(db, 'chats', activeChatId);
+      const messagesRef = collection(chatRef, 'messages');
+      
+      await addDoc(messagesRef, {
+        senderId: profile.uid,
+        senderAlias: profile.alias,
+        text,
+        createdAt: serverTimestamp()
+      });
+
+      await setDoc(chatRef, {
+        lastMessage: text,
+        lastUpdatedAt: serverTimestamp()
+      }, { merge: true });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, `chats/${activeChatId}/messages`);
+    }
+  };
+
+  const searchByAlias = async () => {
+    if (!searchAlias.trim()) return;
+    setIsSearching(true);
+    try {
+      const aliasDoc = await getDoc(doc(db, 'aliases', searchAlias.trim()));
+      if (aliasDoc.exists()) {
+        const uid = aliasDoc.data().uid;
+        const userDoc = await getDoc(doc(db, 'users', uid));
+        if (userDoc.exists()) {
+          setSearchResults([userDoc.data() as UserProfile]);
+        } else {
+          setSearchResults([]);
+        }
+      } else {
+        setSearchResults([]);
+      }
+    } catch (error) {
+      handleFirestoreError(error, OperationType.GET, `aliases/${searchAlias}`);
+    } finally {
+      setIsSearching(false);
+    }
+  };
 
   const handleSignIn = async () => {
     try {
@@ -1171,6 +1328,13 @@ export default function App() {
     }
   };
 
+  const copyInviteLink = () => {
+    if (!profile) return;
+    const url = `${window.location.origin}${window.location.pathname}?invite=${profile.alias}`;
+    navigator.clipboard.writeText(url);
+    showNotification("Invite link copied to clipboard!", "success");
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
@@ -1361,6 +1525,7 @@ export default function App() {
             <div className="hidden lg:block space-y-2">
               {[
                 { id: 'wallet', label: 'Wallet', icon: Wallet },
+                { id: 'chat', label: 'Chat', icon: MessageSquare },
                 { id: 'transfer', label: 'Transfer', icon: Send },
                 { id: 'exchange', label: 'Exchange', icon: ArrowLeftRight },
                 { id: 'reserves', label: 'Reserves', icon: ShieldCheck },
@@ -1659,6 +1824,166 @@ export default function App() {
                 </motion.div>
               )}
 
+              {activeTab === 'chat' && (
+                <motion.div 
+                  key="chat"
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                  className="grid grid-cols-1 lg:grid-cols-12 gap-6 h-[calc(100vh-12rem)]"
+                >
+                  {/* Chat List */}
+                  <div className={cn(
+                    "lg:col-span-4 bg-white rounded-3xl border border-slate-100 shadow-sm flex flex-col overflow-hidden",
+                    activeChatId && "hidden lg:flex"
+                  )}>
+                    <div className="p-4 border-b border-slate-100 space-y-4">
+                      <h3 className="font-bold text-slate-900">Conversations</h3>
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                        <input 
+                          type="text"
+                          placeholder="Search by alias..."
+                          value={searchAlias}
+                          onChange={(e) => setSearchAlias(e.target.value.toUpperCase())}
+                          onKeyDown={(e) => e.key === 'Enter' && searchByAlias()}
+                          className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-100 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                        />
+                      </div>
+                      {searchResults.length > 0 && (
+                        <div className="space-y-2">
+                          {searchResults.map(res => (
+                            <button
+                              key={res.uid}
+                              onClick={async () => {
+                                await startChat(res);
+                                setSearchResults([]);
+                                setSearchAlias('');
+                              }}
+                              className="w-full flex items-center gap-3 p-2 hover:bg-indigo-50 rounded-xl transition-colors text-left"
+                            >
+                              <div className="w-8 h-8 bg-indigo-100 rounded-lg flex items-center justify-center text-indigo-600">
+                                <UserIcon size={16} />
+                              </div>
+                              <div>
+                                <p className="text-xs font-bold text-slate-900">{res.displayName}</p>
+                                <p className="text-[10px] text-slate-500 font-mono">{res.alias}</p>
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex-1 overflow-y-auto p-2 space-y-1">
+                      {chats.length > 0 ? (
+                        chats.map(chat => {
+                          const otherUid = chat.participants.find(p => p !== profile?.uid);
+                          const otherAlias = chat.participantAliases[otherUid || ''];
+                          return (
+                            <button
+                              key={chat.id}
+                              onClick={() => setActiveChatId(chat.id)}
+                              className={cn(
+                                "w-full flex items-center gap-3 p-3 rounded-2xl transition-all text-left",
+                                activeChatId === chat.id ? "bg-indigo-600 text-white shadow-lg shadow-indigo-100" : "hover:bg-slate-50 text-slate-600"
+                              )}
+                            >
+                              <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center", activeChatId === chat.id ? "bg-white/20" : "bg-indigo-50 text-indigo-600")}>
+                                <UserIcon size={20} />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className={cn("text-sm font-bold truncate", activeChatId === chat.id ? "text-white" : "text-slate-900")}>
+                                  {otherAlias}
+                                </p>
+                                <p className={cn("text-xs truncate opacity-70", activeChatId === chat.id ? "text-white" : "text-slate-500")}>
+                                  {chat.lastMessage || "No messages yet"}
+                                </p>
+                              </div>
+                            </button>
+                          );
+                        })
+                      ) : (
+                        <div className="text-center py-8 px-4">
+                          <p className="text-xs text-slate-400 font-medium">Search for an alias to start chatting!</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Chat Window */}
+                  <div className={cn(
+                    "lg:col-span-8 bg-white rounded-3xl border border-slate-100 shadow-sm flex flex-col overflow-hidden",
+                    !activeChatId && "hidden lg:flex"
+                  )}>
+                    {activeChatId ? (
+                      <>
+                        <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <button onClick={() => setActiveChatId(null)} className="lg:hidden p-2 hover:bg-slate-100 rounded-full text-slate-600">
+                              <ArrowLeft size={20} />
+                            </button>
+                            <div className="w-10 h-10 bg-indigo-50 text-indigo-600 rounded-xl flex items-center justify-center">
+                              <UserIcon size={20} />
+                            </div>
+                            <div>
+                              <p className="font-bold text-slate-900">
+                                {chats.find(c => c.id === activeChatId)?.participantAliases[chats.find(c => c.id === activeChatId)?.participants.find(p => p !== profile?.uid) || '']}
+                              </p>
+                              <p className="text-[10px] text-emerald-600 font-bold uppercase tracking-widest">Active Chat</p>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                          {chatMessages.map(msg => {
+                            const isMe = msg.senderId === profile?.uid;
+                            return (
+                              <div key={msg.id} className={cn("flex flex-col", isMe ? "items-end" : "items-start")}>
+                                <div className={cn(
+                                  "max-w-[80%] p-3 rounded-2xl text-sm",
+                                  isMe ? "bg-indigo-600 text-white rounded-tr-none" : "bg-slate-100 text-slate-900 rounded-tl-none"
+                                )}>
+                                  {msg.text}
+                                </div>
+                                <span className="text-[10px] text-slate-400 mt-1 px-1">
+                                  {msg.createdAt?.toDate().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <div className="p-4 border-t border-slate-100 flex gap-2">
+                          <input 
+                            type="text"
+                            placeholder="Type a message..."
+                            value={newMessage}
+                            onChange={(e) => setNewMessage(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && sendMessage()}
+                            className="flex-1 px-4 py-3 bg-slate-50 border border-slate-100 rounded-2xl text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
+                          />
+                          <button 
+                            onClick={sendMessage}
+                            disabled={!newMessage.trim()}
+                            className="p-3 bg-indigo-600 text-white rounded-2xl hover:bg-indigo-700 transition-all disabled:opacity-50"
+                          >
+                            <Send size={20} />
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="flex-1 flex flex-col items-center justify-center p-8 text-center space-y-4">
+                        <div className="w-20 h-20 bg-indigo-50 text-indigo-600 rounded-full flex items-center justify-center">
+                          <MessageSquare size={40} />
+                        </div>
+                        <div className="space-y-2">
+                          <h3 className="text-xl font-bold text-slate-900">Select a conversation</h3>
+                          <p className="text-slate-500 max-w-xs mx-auto">Choose a chat from the list or search for an alias to start a new one.</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </motion.div>
+              )}
+
               {activeTab === 'history' && (
                 <motion.div 
                   key="history"
@@ -1750,6 +2075,7 @@ export default function App() {
       <div className="md:hidden fixed bottom-0 left-0 right-0 h-20 bg-white border-t border-slate-200 flex items-center justify-around px-4 z-50">
         {[
           { id: 'wallet', icon: Wallet },
+          { id: 'chat', icon: MessageSquare },
           { id: 'transfer', icon: Send },
           { id: 'exchange', icon: ArrowLeftRight },
           { id: 'reserves', icon: ShieldCheck },

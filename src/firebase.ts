@@ -102,3 +102,20 @@ export interface Reserve {
   balance: number;
   createdAt: Timestamp;
 }
+
+export interface Chat {
+  id: string;
+  participants: string[];
+  participantAliases: Record<string, string>;
+  lastMessage?: string;
+  lastUpdatedAt?: Timestamp;
+  createdAt: Timestamp;
+}
+
+export interface Message {
+  id: string;
+  senderId: string;
+  senderAlias: string;
+  text: string;
+  createdAt: Timestamp;
+}

@@ -1,5 +1,5 @@
 {
-  "name": "MicroChange",
-  "description": "A professional token exchange network. Swap, transfer, and pay using multiple digital tokens instantly.",
+  "name": "MicroChange Chat",
+  "description": "A professional token exchange network with integrated real-time chat. Swap tokens and communicate with other users instantly.",
   "requestFramePermissions": ["camera"]
 }

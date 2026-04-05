@@ -51,6 +51,33 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["name", "currency", "balance", "createdAt"]
+    },
+    "Chat": {
+      "title": "Chat",
+      "description": "Represents a conversation between two users.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "participants": { "type": "array", "items": { "type": "string" } },
+        "participantAliases": { "type": "object" },
+        "lastMessage": { "type": "string" },
+        "lastUpdatedAt": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["participants", "createdAt"]
+    },
+    "Message": {
+      "title": "Message",
+      "description": "A single message within a chat.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "senderId": { "type": "string" },
+        "senderAlias": { "type": "string" },
+        "text": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["senderId", "text", "createdAt"]
     }
   },
   "firestore": {
@@ -65,6 +92,14 @@
     "/transactions/{transactionId}": {
       "schema": "Transaction",
       "description": "Transaction history"
+    },
+    "/chats/{chatId}": {
+      "schema": "Chat",
+      "description": "Chat metadata."
+    },
+    "/chats/{chatId}/messages/{messageId}": {
+      "schema": "Message",
+      "description": "Messages in a chat."
     },
     "/aliases/{alias}": {
       "schema": {
