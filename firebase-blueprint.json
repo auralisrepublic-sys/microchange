@@ -18,7 +18,7 @@
             "UNITED_LAND_KING": { "type": "number" }
           }
         },
-        "preferredCurrency": { "type": "string", "enum": ["CAURA", "FARISTEL", "SOLARIS", "UNITED_LAND_KING"] },
+        "preferredCurrency": { "type": "string", "enum": ["CAURA", "FARISTEL", "SOLARIS", "UNITED_LAND_KING", "CHESSAR", "NEW_GREENIAN_CROWN", "ECLAT"] },
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["uid", "email", "alias", "balances"]
@@ -35,15 +35,32 @@
         "amount": { "type": "number" },
         "currency": { "type": "string" },
         "timestamp": { "type": "string", "format": "date-time" },
-        "type": { "type": "string", "enum": ["transfer", "exchange"] }
+        "type": { "type": "string", "enum": ["transfer", "exchange", "reserve_deposit", "reserve_withdraw"] }
       },
       "required": ["amount", "currency", "timestamp", "type"]
+    },
+    "Reserve": {
+      "title": "Reserve",
+      "description": "Money reserve/vault for saving",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "currency": { "type": "string" },
+        "balance": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "currency", "balance", "createdAt"]
     }
   },
   "firestore": {
     "/users/{userId}": {
       "schema": "User",
       "description": "User profiles"
+    },
+    "/users/{userId}/reserves/{reserveId}": {
+      "schema": "Reserve",
+      "description": "User's money reserves"
     },
     "/transactions/{transactionId}": {
       "schema": "Transaction",

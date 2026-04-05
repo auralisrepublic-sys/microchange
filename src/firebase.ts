@@ -66,7 +66,7 @@ export const CURRENCIES = {
   UNITED_LAND_KING: { name: 'UNITED LAND KING', rate: 0.75, nation: 'Republic of United Land' },
   CHESSAR: { name: 'CHESSAR', rate: 4.17, nation: 'Cheese Kingdom' },
   NEW_GREENIAN_CROWN: { name: 'NEW GREENIAN CROWN', rate: 1.0, nation: 'New Grennia' },
-  OURS_IS_ECLAT: { name: 'Ours is Éclat', rate: 0.50, nation: 'Gaelic Kingdom of Mabruenia' }
+  ECLAT: { name: 'Éclat', rate: 0.50, nation: 'Gaelic Kingdom of Mabruenia' }
 };
 
 export type CurrencyKey = keyof typeof CURRENCIES;
@@ -90,5 +90,15 @@ export interface TransactionRecord {
   amount: number;
   currency: CurrencyKey;
   timestamp: Timestamp;
-  type: 'transfer' | 'exchange';
+  type: 'transfer' | 'exchange' | 'reserve_deposit' | 'reserve_withdraw';
+  reserveId?: string;
+  reserveName?: string;
+}
+
+export interface Reserve {
+  id: string;
+  name: string;
+  currency: CurrencyKey;
+  balance: number;
+  createdAt: Timestamp;
 }

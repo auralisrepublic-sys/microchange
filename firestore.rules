@@ -31,7 +31,18 @@ service cloud.firestore {
     //   - amount: number (required, positive)
     //   - currency: string (required)
     //   - timestamp: timestamp (required)
-    //   - type: string (required, ['transfer', 'exchange'])
+    //   - type: string (required, ['transfer', 'exchange', 'reserve_deposit', 'reserve_withdraw'])
+    //   - reserveId: string (optional)
+    //   - reserveName: string (optional)
+    //
+    // Collection: users/{userId}/reserves
+    // Document ID: {reserveId}
+    // Fields:
+    //   - id: string (required)
+    //   - name: string (required)
+    //   - currency: string (required)
+    //   - balance: number (required)
+    //   - createdAt: timestamp (required)
     //
     // Collection: aliases
     // Document ID: {alias} (MCROXXXXXXXXX)
@@ -69,8 +80,17 @@ service cloud.firestore {
              data.displayName is string && data.displayName.size() < 100 &&
              data.alias is string && data.alias.matches("^MCRO[A-Z0-9]{9}$") &&
              data.balances is map &&
-             data.preferredCurrency in ['CAURA', 'FARISTEL', 'SOLARIS', 'UNITED_LAND_KING', 'CHESSAR', 'NEW_GREENIAN_CROWN', 'OURS_IS_ECLAT'] &&
+             data.preferredCurrency in ['CAURA', 'FARISTEL', 'SOLARIS', 'UNITED_LAND_KING', 'CHESSAR', 'NEW_GREENIAN_CROWN', 'ECLAT'] &&
              data.createdAt is timestamp;
+    }
+
+    function isValidReserve(data, reserveId) {
+      return data.keys().hasAll(['id', 'name', 'currency', 'balance', 'createdAt']) &&
+             data.id == reserveId &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             data.currency in ['CAURA', 'FARISTEL', 'SOLARIS', 'UNITED_LAND_KING', 'CHESSAR', 'NEW_GREENIAN_CROWN', 'ECLAT'] &&
+             data.balance is number && data.balance >= 0 &&
+             (data.createdAt == request.time || data.createdAt is timestamp);
     }
 
     match /users/{userId} {
@@ -86,6 +106,16 @@ service cloud.firestore {
          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['balances']) &&
          isValidUser(request.resource.data))
       );
+
+      match /reserves/{reserveId} {
+        allow read: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidReserve(request.resource.data, reserveId);
+        allow update: if isOwner(userId) && isValidReserve(request.resource.data, reserveId) &&
+                      request.resource.data.id == resource.data.id &&
+                      request.resource.data.currency == resource.data.currency &&
+                      request.resource.data.createdAt == resource.data.createdAt;
+        allow delete: if isOwner(userId);
+      }
     }
 
     match /transactions/{transactionId} {

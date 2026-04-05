@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { onAuthStateChanged, signInWithPopup, signOut, User as FirebaseUser } from 'firebase/auth';
-import { doc, getDoc, setDoc, serverTimestamp, onSnapshot, collection, query, where, orderBy, limit, getDocs, runTransaction, Timestamp } from 'firebase/firestore';
-import { auth, db, googleProvider, CURRENCIES, CurrencyKey, UserProfile, TransactionRecord, OperationType, handleFirestoreError } from './firebase';
-import { Wallet, ArrowLeftRight, Send, User as UserIcon, LogOut, QrCode, TrendingUp, History, ShieldCheck, Globe, Coins, Camera, X, CheckCircle2, Download, RefreshCw, FileText, Info } from 'lucide-react';
+import { doc, getDoc, setDoc, deleteDoc, serverTimestamp, onSnapshot, collection, query, where, orderBy, limit, getDocs, runTransaction, Timestamp } from 'firebase/firestore';
+import { auth, db, googleProvider, CURRENCIES, CurrencyKey, UserProfile, TransactionRecord, OperationType, handleFirestoreError, Reserve } from './firebase';
+import { Wallet, ArrowLeftRight, Send, User as UserIcon, LogOut, QrCode, TrendingUp, History, ShieldCheck, Globe, Coins, Camera, X, CheckCircle2, Download, RefreshCw, FileText, Info, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import QRCode from 'react-qr-code';
 import { cn } from './lib/utils';
@@ -319,6 +319,224 @@ const AdminPanel = ({ currentRate, onUpdate }: { currentRate: number, onUpdate: 
   );
 };
 
+interface ReserveCardProps {
+  reserve: Reserve;
+  onDeposit: (id: string) => void;
+  onWithdraw: (id: string) => void;
+  onDelete: (id: string) => void;
+}
+
+const ReserveCard: React.FC<ReserveCardProps> = ({ reserve, onDeposit, onWithdraw, onDelete }) => {
+  return (
+    <motion.div 
+      whileHover={{ y: -4 }}
+      className="p-6 bg-white rounded-3xl border border-slate-100 shadow-sm hover:shadow-xl transition-all space-y-6 relative group"
+    >
+      <button 
+        onClick={() => onDelete(reserve.id)}
+        className="absolute top-4 right-4 p-2 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-all md:opacity-0 group-hover:opacity-100"
+      >
+        <Trash2 size={18} />
+      </button>
+      <div className="flex justify-between items-start">
+        <div className="p-3 bg-indigo-50 text-indigo-600 rounded-2xl">
+          <ShieldCheck size={24} />
+        </div>
+        <span className="text-[10px] font-bold uppercase tracking-widest px-2 py-1 bg-slate-100 rounded-full text-slate-500">
+          {reserve.currency}
+        </span>
+      </div>
+      <div>
+        <h3 className="font-bold text-slate-900 text-lg">{reserve.name}</h3>
+        <p className="text-3xl font-black font-mono text-indigo-600 mt-1">
+          {reserve.balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+        </p>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <button 
+          onClick={() => onDeposit(reserve.id)}
+          className="flex items-center justify-center gap-2 py-3 bg-indigo-50 text-indigo-600 rounded-xl font-bold text-xs hover:bg-indigo-100 transition-all"
+        >
+          <Send size={14} />
+          Deposit
+        </button>
+        <button 
+          onClick={() => onWithdraw(reserve.id)}
+          className="flex items-center justify-center gap-2 py-3 bg-slate-50 text-slate-600 rounded-xl font-bold text-xs hover:bg-slate-100 transition-all"
+        >
+          <Download size={14} />
+          Withdraw
+        </button>
+      </div>
+    </motion.div>
+  );
+};
+
+const ReserveActionModal = ({ 
+  isOpen, 
+  onClose, 
+  reserve, 
+  type, 
+  onConfirm,
+  currencies
+}: { 
+  isOpen: boolean; 
+  onClose: () => void; 
+  reserve: Reserve | null; 
+  type: 'deposit' | 'withdraw' | 'create'; 
+  onConfirm: (amountOrName: string, currency?: CurrencyKey) => Promise<void>;
+  currencies: any;
+}) => {
+  const [value, setValue] = useState('');
+  const [currency, setCurrency] = useState<CurrencyKey>('CAURA');
+  const [loading, setLoading] = useState(false);
+
+  if (!isOpen) return null;
+
+  const handleConfirm = async () => {
+    setLoading(true);
+    try {
+      await onConfirm(value, currency);
+      onClose();
+      setValue('');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-6">
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.95, y: 20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        className="bg-white w-full max-w-md rounded-[2.5rem] shadow-2xl overflow-hidden"
+      >
+        <div className="p-8 border-b border-slate-100 flex justify-between items-center">
+          <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tight">
+            {type === 'create' ? 'Create Reserve' : type === 'deposit' ? 'Deposit' : 'Withdraw'}
+          </h2>
+          <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-full transition-colors">
+            <X size={24} />
+          </button>
+        </div>
+        <div className="p-8 space-y-6">
+          {type === 'create' ? (
+            <>
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-slate-400 uppercase tracking-widest">Reserve Name</label>
+                <input 
+                  type="text" 
+                  value={value}
+                  onChange={(e) => setValue(e.target.value)}
+                  placeholder="e.g. My Savings"
+                  className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-slate-900 font-bold focus:ring-2 focus:ring-indigo-500 transition-all outline-none"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-slate-400 uppercase tracking-widest">Currency</label>
+                <select 
+                  value={currency}
+                  onChange={(e) => setCurrency(e.target.value as CurrencyKey)}
+                  className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-slate-900 font-bold focus:ring-2 focus:ring-indigo-500 transition-all outline-none"
+                >
+                  {(Object.keys(currencies) as CurrencyKey[]).map(k => (
+                    <option key={k} value={k}>{k}</option>
+                  ))}
+                </select>
+              </div>
+            </>
+          ) : (
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-400 uppercase tracking-widest">Amount ({reserve?.currency})</label>
+              <input 
+                type="number" 
+                value={value}
+                onChange={(e) => setValue(e.target.value)}
+                placeholder="0.00"
+                className="w-full px-6 py-4 bg-slate-50 border border-slate-100 rounded-2xl text-slate-900 font-bold focus:ring-2 focus:ring-indigo-500 transition-all outline-none"
+              />
+            </div>
+          )}
+          <button 
+            onClick={handleConfirm}
+            disabled={loading || !value}
+            className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold text-lg hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 disabled:opacity-50 flex items-center justify-center gap-2"
+          >
+            {loading ? <RefreshCw className="animate-spin" size={20} /> : <CheckCircle2 size={20} />}
+            {loading ? 'Processing...' : 'Confirm'}
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+};
+
+const DeleteConfirmModal = ({ 
+  isOpen, 
+  onClose, 
+  reserve, 
+  onConfirm 
+}: { 
+  isOpen: boolean; 
+  onClose: () => void; 
+  reserve: Reserve | null; 
+  onConfirm: () => Promise<void>;
+}) => {
+  const [loading, setLoading] = useState(false);
+
+  if (!isOpen || !reserve) return null;
+
+  const handleConfirm = async () => {
+    setLoading(true);
+    try {
+      await onConfirm();
+      onClose();
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[110] flex items-center justify-center p-6">
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.95, y: 20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        className="bg-white w-full max-w-sm rounded-[2.5rem] shadow-2xl overflow-hidden p-8 space-y-6"
+      >
+        <div className="text-center space-y-4">
+          <div className="w-16 h-16 bg-red-50 text-red-500 rounded-2xl mx-auto flex items-center justify-center">
+            <Trash2 size={32} />
+          </div>
+          <h2 className="text-2xl font-black text-slate-900 uppercase tracking-tight">Delete Reserve?</h2>
+          <p className="text-slate-500 text-sm leading-relaxed">
+            Are you sure you want to delete <span className="font-bold text-slate-900">"{reserve.name}"</span>? 
+            {reserve.balance > 0 && (
+              <> Any remaining funds (<span className="font-bold text-indigo-600">{reserve.balance} {reserve.currency}</span>) will be returned to your wallet.</>
+            )}
+          </p>
+        </div>
+        <div className="flex flex-col gap-3">
+          <button 
+            onClick={handleConfirm}
+            disabled={loading}
+            className="w-full py-4 bg-red-500 text-white rounded-2xl font-bold text-lg hover:bg-red-600 transition-all shadow-lg shadow-red-100 disabled:opacity-50 flex items-center justify-center gap-2"
+          >
+            {loading ? <RefreshCw className="animate-spin" size={20} /> : <Trash2 size={20} />}
+            {loading ? 'Deleting...' : 'Yes, Delete'}
+          </button>
+          <button 
+            onClick={onClose}
+            disabled={loading}
+            className="w-full py-4 bg-slate-100 text-slate-600 rounded-2xl font-bold text-lg hover:bg-slate-200 transition-all disabled:opacity-50"
+          >
+            Cancel
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  );
+};
+
 const TermsModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) => {
   if (!isOpen) return null;
   return (
@@ -403,8 +621,9 @@ export default function App() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'wallet' | 'transfer' | 'exchange' | 'history' | 'admin'>('wallet');
+  const [activeTab, setActiveTab] = useState<'wallet' | 'transfer' | 'exchange' | 'history' | 'admin' | 'reserves'>('wallet');
   const [transactions, setTransactions] = useState<TransactionRecord[]>([]);
+  const [reserves, setReserves] = useState<Reserve[]>([]);
   const [showSetup, setShowSetup] = useState(false);
   const [showTerms, setShowTerms] = useState(false);
   const [preferredCurrency, setPreferredCurrency] = useState<CurrencyKey>('CAURA');
@@ -424,6 +643,15 @@ export default function App() {
   const [exchangeLoading, setExchangeLoading] = useState(false);
 
   const [showScanner, setShowScanner] = useState(false);
+  const [reserveModal, setReserveModal] = useState<{ isOpen: boolean; type: 'create' | 'deposit' | 'withdraw'; reserve: Reserve | null }>({
+    isOpen: false,
+    type: 'create',
+    reserve: null
+  });
+  const [deleteConfirm, setDeleteConfirm] = useState<{ isOpen: boolean; reserve: Reserve | null }>({
+    isOpen: false,
+    reserve: null
+  });
   const [lastTransfer, setLastTransfer] = useState<any>(null);
   const [notification, setNotification] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
 
@@ -533,6 +761,18 @@ export default function App() {
 
     return () => { unsub1(); unsub2(); unsubProfile(); };
   }, [profile?.uid]);
+
+  useEffect(() => {
+    if (!user) return;
+    const q = query(collection(db, 'users', user.uid, 'reserves'), orderBy('createdAt', 'desc'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const res = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Reserve));
+      setReserves(res);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.GET, `users/${user.uid}/reserves`);
+    });
+    return () => unsubscribe();
+  }, [user]);
 
   const handleSignIn = async () => {
     try {
@@ -729,6 +969,193 @@ export default function App() {
       handleFirestoreError(error, OperationType.WRITE, 'transactions');
     } finally {
       setExchangeLoading(false);
+    }
+  };
+
+  const createReserve = async (name: string, currency: CurrencyKey) => {
+    if (!user) return;
+    try {
+      const reserveRef = doc(collection(db, 'users', user.uid, 'reserves'));
+      await setDoc(reserveRef, {
+        id: reserveRef.id,
+        name,
+        currency,
+        balance: 0,
+        createdAt: serverTimestamp()
+      });
+      showNotification("Reserve created successfully!", "success");
+    } catch (error: any) {
+      showNotification("Failed to create reserve: " + error.message, "error");
+      handleFirestoreError(error, OperationType.WRITE, `users/${user.uid}/reserves`);
+    }
+  };
+
+  const depositToReserve = async (reserveId: string, amount: number) => {
+    if (!user || !profile) return;
+    const reserve = reserves.find(r => r.id === reserveId);
+    if (!reserve) return;
+    if ((profile.balances[reserve.currency] || 0) < amount) {
+      showNotification("Insufficient balance", "error");
+      return;
+    }
+
+    try {
+      await runTransaction(db, async (transaction) => {
+        const userRef = doc(db, 'users', user.uid);
+        const reserveRef = doc(db, 'users', user.uid, 'reserves', reserveId);
+        const txRef = doc(collection(db, 'transactions'));
+
+        const userDoc = await transaction.get(userRef);
+        const reserveDoc = await transaction.get(reserveRef);
+
+        if (!userDoc.exists() || !reserveDoc.exists()) throw new Error("Document not found");
+
+        const userData = userDoc.data() as UserProfile;
+        const reserveData = reserveDoc.data() as Reserve;
+
+        if ((userData.balances[reserve.currency] || 0) < amount) throw new Error("Insufficient balance");
+
+        transaction.update(userRef, {
+          [`balances.${reserve.currency}`]: userData.balances[reserve.currency] - amount
+        });
+
+        transaction.update(reserveRef, {
+          balance: reserveData.balance + amount
+        });
+
+        transaction.set(txRef, {
+          fromUid: user.uid,
+          toUid: user.uid,
+          fromAlias: profile.alias,
+          toAlias: profile.alias,
+          amount,
+          currency: reserve.currency,
+          timestamp: serverTimestamp(),
+          type: 'reserve_deposit',
+          reserveId,
+          reserveName: reserve.name
+        });
+      });
+      showNotification(`Deposited ${amount} ${reserve.currency} to ${reserve.name}`, "success");
+    } catch (error: any) {
+      showNotification("Deposit failed: " + error.message, "error");
+      handleFirestoreError(error, OperationType.WRITE, `users/${user.uid}/reserves/${reserveId}`);
+    }
+  };
+
+  const withdrawFromReserve = async (reserveId: string, amount: number) => {
+    if (!user || !profile) return;
+    const reserve = reserves.find(r => r.id === reserveId);
+    if (!reserve) return;
+    if (reserve.balance < amount) {
+      showNotification("Insufficient reserve balance", "error");
+      return;
+    }
+
+    try {
+      await runTransaction(db, async (transaction) => {
+        const userRef = doc(db, 'users', user.uid);
+        const reserveRef = doc(db, 'users', user.uid, 'reserves', reserveId);
+        const txRef = doc(collection(db, 'transactions'));
+
+        const userDoc = await transaction.get(userRef);
+        const reserveDoc = await transaction.get(reserveRef);
+
+        if (!userDoc.exists() || !reserveDoc.exists()) throw new Error("Document not found");
+
+        const userData = userDoc.data() as UserProfile;
+        const reserveData = reserveDoc.data() as Reserve;
+
+        if (reserveData.balance < amount) throw new Error("Insufficient reserve balance");
+
+        transaction.update(userRef, {
+          [`balances.${reserve.currency}`]: (userData.balances[reserve.currency] || 0) + amount
+        });
+
+        transaction.update(reserveRef, {
+          balance: reserveData.balance - amount
+        });
+
+        transaction.set(txRef, {
+          fromUid: user.uid,
+          toUid: user.uid,
+          fromAlias: profile.alias,
+          toAlias: profile.alias,
+          amount,
+          currency: reserve.currency,
+          timestamp: serverTimestamp(),
+          type: 'reserve_withdraw',
+          reserveId,
+          reserveName: reserve.name
+        });
+      });
+      showNotification(`Withdrew ${amount} ${reserve.currency} from ${reserve.name}`, "success");
+    } catch (error: any) {
+      showNotification("Withdrawal failed: " + error.message, "error");
+      handleFirestoreError(error, OperationType.WRITE, `users/${user.uid}/reserves/${reserveId}`);
+    }
+  };
+
+  const deleteReserve = async (reserveId: string) => {
+    if (!user || !profile) {
+      console.error("Delete failed: No user or profile");
+      return;
+    }
+    const reserve = reserves.find(r => r.id === reserveId);
+    if (!reserve) {
+      console.error("Delete failed: Reserve not found in state", reserveId);
+      return;
+    }
+
+    console.log("Starting reserve deletion for:", reserveId);
+
+    try {
+      await runTransaction(db, async (transaction) => {
+        const userRef = doc(db, 'users', user.uid);
+        const reserveRef = doc(db, 'users', user.uid, 'reserves', reserveId);
+        
+        const userDoc = await transaction.get(userRef);
+        const reserveDoc = await transaction.get(reserveRef);
+
+        if (!userDoc.exists()) throw new Error("User profile not found");
+        if (!reserveDoc.exists()) throw new Error("Reserve document not found");
+
+        const userData = userDoc.data() as UserProfile;
+        const reserveData = reserveDoc.data() as Reserve;
+
+        console.log("Reserve data found:", reserveData);
+
+        // If there's a balance, return it to the user
+        if (reserveData.balance > 0) {
+          console.log(`Returning balance: ${reserveData.balance} ${reserveData.currency}`);
+          const currentBalance = userData.balances[reserveData.currency] || 0;
+          transaction.update(userRef, {
+            [`balances.${reserveData.currency}`]: currentBalance + reserveData.balance
+          });
+
+          const txRef = doc(collection(db, 'transactions'));
+          transaction.set(txRef, {
+            fromUid: user.uid,
+            toUid: user.uid,
+            fromAlias: profile.alias,
+            toAlias: profile.alias,
+            amount: reserveData.balance,
+            currency: reserveData.currency,
+            timestamp: serverTimestamp(),
+            type: 'reserve_withdraw',
+            reserveId,
+            reserveName: reserveData.name + " (Closed)"
+          });
+        }
+
+        transaction.delete(reserveRef);
+      });
+      showNotification(`Reserve "${reserve.name}" deleted successfully.`, "success");
+      console.log("Reserve deleted successfully");
+    } catch (error: any) {
+      console.error("Delete transaction failed:", error);
+      showNotification("Failed to delete reserve: " + error.message, "error");
+      handleFirestoreError(error, OperationType.DELETE, `users/${user.uid}/reserves/${reserveId}`);
     }
   };
 
@@ -936,6 +1363,7 @@ export default function App() {
                 { id: 'wallet', label: 'Wallet', icon: Wallet },
                 { id: 'transfer', label: 'Transfer', icon: Send },
                 { id: 'exchange', label: 'Exchange', icon: ArrowLeftRight },
+                { id: 'reserves', label: 'Reserves', icon: ShieldCheck },
                 { id: 'history', label: 'History', icon: History },
                 ...(user?.email === 'mainosalvi@gmail.com' ? [{ id: 'admin', label: 'Admin', icon: ShieldCheck }] : []),
               ].map((item) => (
@@ -1258,6 +1686,48 @@ export default function App() {
                 </motion.div>
               )}
 
+              {activeTab === 'reserves' && (
+                <motion.div 
+                  key="reserves"
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                  className="space-y-8"
+                >
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-2xl font-extrabold text-slate-900">Money Reserves</h2>
+                    <button 
+                      onClick={() => setReserveModal({ isOpen: true, type: 'create', reserve: null })}
+                      className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-xl text-sm font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100"
+                    >
+                      <ShieldCheck size={18} />
+                      New Reserve
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {reserves.map(reserve => (
+                      <ReserveCard 
+                        key={reserve.id}
+                        reserve={reserve}
+                        onDeposit={(id) => setReserveModal({ isOpen: true, type: 'deposit', reserve })}
+                        onWithdraw={(id) => setReserveModal({ isOpen: true, type: 'withdraw', reserve })}
+                        onDelete={(id) => setDeleteConfirm({ isOpen: true, reserve })}
+                      />
+                    ))}
+                    {reserves.length === 0 && (
+                      <div className="col-span-full text-center py-20 bg-white rounded-[2.5rem] border border-dashed border-slate-200">
+                        <div className="w-16 h-16 bg-slate-50 rounded-2xl mx-auto flex items-center justify-center mb-4">
+                          <ShieldCheck className="text-slate-300" size={32} />
+                        </div>
+                        <h3 className="font-bold text-slate-900">No reserves yet</h3>
+                        <p className="text-slate-400 text-sm mt-1">Create a reserve to start saving money securely.</p>
+                      </div>
+                    )}
+                  </div>
+                </motion.div>
+              )}
+
               {activeTab === 'admin' && user?.email === 'mainosalvi@gmail.com' && (
                 <motion.div 
                   key="admin"
@@ -1282,6 +1752,7 @@ export default function App() {
           { id: 'wallet', icon: Wallet },
           { id: 'transfer', icon: Send },
           { id: 'exchange', icon: ArrowLeftRight },
+          { id: 'reserves', icon: ShieldCheck },
           { id: 'history', icon: History },
           ...(user?.email === 'mainosalvi@gmail.com' ? [{ id: 'admin', icon: ShieldCheck }] : []),
         ].map((item) => (
@@ -1312,6 +1783,34 @@ export default function App() {
       )}
 
       <TermsModal isOpen={showTerms} onClose={() => setShowTerms(false)} />
+
+      <ReserveActionModal 
+        isOpen={reserveModal.isOpen}
+        type={reserveModal.type}
+        reserve={reserveModal.reserve}
+        currencies={dynamicCurrencies}
+        onClose={() => setReserveModal({ ...reserveModal, isOpen: false })}
+        onConfirm={async (val, curr) => {
+          if (reserveModal.type === 'create') {
+            await createReserve(val, curr!);
+          } else if (reserveModal.type === 'deposit') {
+            await depositToReserve(reserveModal.reserve!.id, parseFloat(val));
+          } else if (reserveModal.type === 'withdraw') {
+            await withdrawFromReserve(reserveModal.reserve!.id, parseFloat(val));
+          }
+        }}
+      />
+
+      <DeleteConfirmModal 
+        isOpen={deleteConfirm.isOpen}
+        reserve={deleteConfirm.reserve}
+        onClose={() => setDeleteConfirm({ isOpen: false, reserve: null })}
+        onConfirm={async () => {
+          if (deleteConfirm.reserve) {
+            await deleteReserve(deleteConfirm.reserve.id);
+          }
+        }}
+      />
     </div>
   );
 }
