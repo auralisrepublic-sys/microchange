@@ -35,9 +35,7 @@
         "amount": { "type": "number" },
         "currency": { "type": "string" },
         "timestamp": { "type": "string", "format": "date-time" },
-        "type": { "type": "string", "enum": ["transfer", "exchange", "reserve_deposit", "reserve_withdraw", "purchase"] },
-        "productId": { "type": "string" },
-        "productName": { "type": "string" }
+        "type": { "type": "string", "enum": ["transfer", "exchange", "reserve_deposit", "reserve_withdraw"] }
       },
       "required": ["amount", "currency", "timestamp", "type"]
     },
@@ -53,23 +51,6 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["name", "currency", "balance", "createdAt"]
-    },
-    "Product": {
-      "title": "Product",
-      "description": "Item for sale in MicroShop",
-      "type": "object",
-      "properties": {
-        "id": { "type": "string" },
-        "name": { "type": "string" },
-        "description": { "type": "string" },
-        "price": { "type": "number" },
-        "currency": { "type": "string" },
-        "sellerUid": { "type": "string" },
-        "sellerAlias": { "type": "string" },
-        "imageUrl": { "type": "string" },
-        "createdAt": { "type": "string", "format": "date-time" }
-      },
-      "required": ["name", "price", "currency", "sellerUid", "sellerAlias", "createdAt"]
     }
   },
   "firestore": {
@@ -84,10 +65,6 @@
     "/transactions/{transactionId}": {
       "schema": "Transaction",
       "description": "Transaction history"
-    },
-    "/products/{productId}": {
-      "schema": "Product",
-      "description": "Marketplace products"
     },
     "/aliases/{alias}": {
       "schema": {

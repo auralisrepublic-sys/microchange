@@ -93,17 +93,6 @@ service cloud.firestore {
              (data.createdAt == request.time || data.createdAt is timestamp);
     }
 
-    function isValidProduct(data, productId) {
-      return data.keys().hasAll(['id', 'name', 'price', 'currency', 'sellerUid', 'sellerAlias', 'createdAt']) &&
-             data.id == productId &&
-             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
-             data.description is string && data.description.size() < 1000 &&
-             data.price is number && data.price > 0 &&
-             data.currency in ['CAURA', 'FARISTEL', 'SOLARIS', 'UNITED_LAND_KING', 'CHESSAR', 'NEW_GREENIAN_CROWN', 'ECLAT'] &&
-             data.sellerUid == request.auth.uid &&
-             (data.createdAt == request.time || data.createdAt is timestamp);
-    }
-
     match /users/{userId} {
       allow read: if isAuthenticated();
       allow create: if isOwner(userId) && isValidUser(request.resource.data);
@@ -133,18 +122,7 @@ service cloud.firestore {
       allow read: if isAuthenticated() && (request.auth.uid == resource.data.fromUid || request.auth.uid == resource.data.toUid);
       allow create: if isAuthenticated() && 
                     request.resource.data.fromUid == request.auth.uid &&
-                    request.resource.data.amount > 0 &&
-                    request.resource.data.type in ['transfer', 'exchange', 'reserve_deposit', 'reserve_withdraw', 'purchase'];
-    }
-
-    match /products/{productId} {
-      allow read, list: if isAuthenticated();
-      allow create: if isAuthenticated() && isValidProduct(request.resource.data, productId);
-      allow update: if isAuthenticated() && (
-        (resource.data.sellerUid == request.auth.uid && isValidProduct(request.resource.data, productId)) ||
-        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['id', 'name', 'description', 'price', 'currency', 'sellerUid', 'sellerAlias', 'createdAt']))
-      );
-      allow delete: if isAuthenticated() && resource.data.sellerUid == request.auth.uid;
+                    request.resource.data.amount > 0;
     }
 
     match /aliases/{alias} {
