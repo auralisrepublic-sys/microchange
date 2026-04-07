@@ -101,7 +101,7 @@ service cloud.firestore {
              data.displayName is string && data.displayName.size() < 100 &&
              data.alias is string && data.alias.matches("^MCRO[A-Z0-9]{9}$") &&
              data.balances is map &&
-             data.preferredCurrency in ['CAURA', 'FARISTEL', 'SOLARIS', 'UNITED_LAND_KING', 'CHESSAR', 'NEW_GREENIAN_CROWN', 'ECLAT', 'VALDORIAN_CREDIT'] &&
+             data.preferredCurrency in ['CAURA', 'FARISTEL', 'SOLARIS', 'UNITED_LAND_KING', 'CHESSAR', 'NEW_GREENIAN_CROWN', 'ECLAT', 'VALDORIAN_CREDIT', 'MOEEZLAND_DINAR'] &&
              data.createdAt is timestamp;
     }
 
@@ -109,7 +109,7 @@ service cloud.firestore {
       return data.keys().hasAll(['id', 'name', 'currency', 'balance', 'createdAt']) &&
              data.id == reserveId &&
              data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
-             data.currency in ['CAURA', 'FARISTEL', 'SOLARIS', 'UNITED_LAND_KING', 'CHESSAR', 'NEW_GREENIAN_CROWN', 'ECLAT', 'VALDORIAN_CREDIT'] &&
+             data.currency in ['CAURA', 'FARISTEL', 'SOLARIS', 'UNITED_LAND_KING', 'CHESSAR', 'NEW_GREENIAN_CROWN', 'ECLAT', 'VALDORIAN_CREDIT', 'MOEEZLAND_DINAR'] &&
              data.balance is number && data.balance >= 0 &&
              (data.createdAt == request.time || data.createdAt is timestamp);
     }
